@@ -416,6 +416,31 @@ def matches_keyword(entry, keyword: str) -> bool:
     summary = (getattr(entry, "summary", "") or "").lower()
     return (kw in title) or (kw in summary)
 
+# Nama provinsi + seluruh kab/kota Jabar (varian ejaan umum)
+JABAR_KEYWORDS = {
+    "jawa barat", "jabar", "bandung", "kota bandung", "kabupaten bandung", "bandung barat",
+    "cimahi", "sumedang", "garut", "tasikmalaya", "kota tasikmalaya",
+    "cianjur", "sukabumi", "kota sukabumi", "bogor", "kota bogor", "kabupaten bogor",
+    "depok", "bekasi", "kota bekasi", "kabupaten bekasi",
+    "karawang", "purwakarta", "subang", "indramayu", "majalengka", "kuningan", "cirebon", "kota cirebon",
+    "pangandaran", "banjar", "kota banjar",
+    # Area/landmark yang sering dipakai
+    "gedung sate", "bandung raya", "ciwidey", "lembang", "cibiru", "cibinong", "parahyangan"
+}
+
+def is_west_java_hit(title: str, summary: str, url: str) -> bool:
+    t = (title or "").lower()
+    s = (summary or "").lower()
+    u = (url or "").lower()
+    # 1) cek di judul/deskripsi
+    for k in JABAR_KEYWORDS:
+        if k in t or k in s:
+            return True
+    # 2) sedikit heuristic domain/slug
+    heuristics = ["jabar", "jawabarat", "bandung", "cirebon", "bogor", "bekasi", "tasik", "garut", "cianjur", "sukabumi", "depok"]
+    return any(h in u for h in heuristics)
+
+
 @st.cache_data(show_spinner=False)
 def search_indonesia_rss(keyword: str, max_results: int, days_filter: int) -> List[Dict]:
     """
@@ -618,6 +643,8 @@ def fetch_articles(urls: List[str], user_agent: Optional[str] = None, max_worker
 with st.sidebar:
     st.header("⚙️ Pengaturan")
     keyword = st.text_input("Kata kunci", "inflasi Indonesia")
+    lock_jabar = st.checkbox("🔒 Kunci ke Jawa Barat", value=True,
+                         help="Hanya pertahankan berita yang judul/deskripsi/URL mengandung area Jawa Barat.")
     max_results = st.slider("Jumlah berita (maks)", 10, 200, 60, 10)
     days_filter = st.slider("Filter umur berita (hari, 0=tanpa filter)", 0, 90, 14)
     user_agent = st.text_input("Custom User-Agent (opsional)", value="")
@@ -641,8 +668,36 @@ if run_btn:
         st.stop()
 
     df_seed = pd.DataFrame(rows)
+
+    # Pastikan kolom yang dipakai filter ada (hindari KeyError / None)
+    for c in ["title", "desc", "url"]:
+        if c not in df_seed.columns:
+            df_seed[c] = ""
+    
+    if lock_jabar:
+        before = len(df_seed)
+        df_seed = df_seed[
+            df_seed.apply(
+                lambda r: is_west_java_hit(
+                    r.get("title", ""), r.get("desc", ""), r.get("url", "")
+                ),
+                axis=1,
+            )
+        ]
+        after = len(df_seed)
+        st.caption(f"Filter wilayah Jawa Barat aktif: {before} → {after} kandidat")
+        if after == 0:
+            st.warning(
+                "Tidak ada kandidat yang cocok dengan wilayah Jawa Barat. "
+                "Coba ganti kata kunci atau matikan filter."
+            )
+            st.stop()
+    else:
+        st.caption("Filter wilayah Jawa Barat nonaktif.")
+    
     st.subheader("Kandidat URL (Lokal)")
     st.dataframe(df_seed, use_container_width=True, hide_index=True)
+
 
     # 2) Extract
     urls = df_seed["url"].dropna().tolist()
