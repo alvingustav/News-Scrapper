@@ -202,40 +202,161 @@ def search_news(backend: str, keyword: str, language: str, country: str,
 
 # ============ Extraction via Trafilatura ============
 def fetch_article(url: str, user_agent: Optional[str] = None) -> Dict:
-    data = {"url": url, "title_article": None, "text": None, "publish_date": None, "meta_desc": None}
+    """
+    Ambil artikel dengan beberapa strategi:
+    1) trafilatura.fetch_url + trafilatura.extract (normal)
+    2) requests.get + trafilatura.extract(html=...) (kadang lebih berhasil)
+    3) readability-lxml (fallback)
+    4) boilerpy3 ArticleExtractor (fallback)
+    5) jusText (fallback)
+    """
+    data = {
+        "url": url,
+        "title_article": None,
+        "text": None,
+        "publish_date": None,
+        "meta_desc": None
+    }
+
+    UA = user_agent or (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+    )
+    headers = {
+        "User-Agent": UA,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+        "Connection": "keep-alive",
+    }
+
+    # Helper: isi meta dari trafilatura jika ada
+    def _fill_meta_from_traf(downloaded: str):
+        try:
+            meta = trafilatura.metadata.extract_metadata(downloaded)
+            if meta:
+                data["title_article"] = data["title_article"] or meta.title
+                data["publish_date"] = data["publish_date"] or meta.date
+                data["meta_desc"] = data["meta_desc"] or meta.description
+        except Exception:
+            pass
+
+    # --- 1) trafilatura.fetch_url ---
     try:
-        downloaded = trafilatura.fetch_url(
-            url,
-            no_ssl=True,
-            user_agent=user_agent or (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        downloaded = trafilatura.fetch_url(url, no_ssl=True, user_agent=UA)
+        if downloaded:
+            extracted = trafilatura.extract(
+                downloaded,
+                include_comments=False,
+                include_tables=False,
+                with_metadata=True
             )
-        )
-        if not downloaded:
-            return data
-
-        extracted = trafilatura.extract(
-            downloaded,
-            include_comments=False,
-            include_tables=False,
-            with_metadata=True
-        )
-        if extracted:
-            data["text"] = extracted
-
-        meta = trafilatura.metadata.extract_metadata(downloaded)
-        if meta:
-            data["title_article"] = meta.title or None
-            data["publish_date"] = meta.date or None
-            data["meta_desc"] = meta.description or None
-
-        if not data["title_article"]:
-            bex = trafilatura.bare_extraction(downloaded, with_metadata=True)
-            if bex and "title" in bex:
-                data["title_article"] = bex["title"]
+            if extracted and len(extracted) > 60:
+                data["text"] = extracted
+                _fill_meta_from_traf(downloaded)
+                if not data["title_article"]:
+                    bex = trafilatura.bare_extraction(downloaded, with_metadata=True)
+                    if bex and "title" in bex:
+                        data["title_article"] = bex["title"]
+                return data
     except Exception:
         pass
+
+    # --- 2) requests.get + trafilatura.extract(html=...) ---
+    html = None
+    try:
+        resp = requests.get(url, headers=headers, timeout=20, allow_redirects=True)
+        if resp.ok and "text/html" in resp.headers.get("Content-Type", ""):
+            resp.encoding = resp.apparent_encoding or resp.encoding
+            html = resp.text
+            extracted = trafilatura.extract(
+                html,
+                include_comments=False,
+                include_tables=False,
+                with_metadata=True,
+                url=url  # penting untuk normalisasi link
+            )
+            if extracted and len(extracted) > 60:
+                data["text"] = extracted
+                # meta dari HTML mentah
+                try:
+                    meta = trafilatura.metadata.extract_metadata(html)
+                    if meta:
+                        data["title_article"] = data["title_article"] or meta.title
+                        data["publish_date"] = data["publish_date"] or meta.date
+                        data["meta_desc"] = data["meta_desc"] or meta.description
+                except Exception:
+                    pass
+                if not data["title_article"]:
+                    try:
+                        bex = trafilatura.bare_extraction(html, with_metadata=True)
+                        if bex and "title" in bex:
+                            data["title_article"] = bex["title"]
+                    except Exception:
+                        pass
+                return data
+    except Exception:
+        pass
+
+    # --- 3) readability-lxml fallback ---
+    try:
+        from readability import Document
+        if html is None:
+            resp = requests.get(url, headers=headers, timeout=20)
+            if not resp.ok:
+                raise RuntimeError("HTTP not OK")
+            resp.encoding = resp.apparent_encoding or resp.encoding
+            html = resp.text
+        doc = Document(html)
+        content_html = doc.summary()
+        # crude strip tags
+        text = re.sub(r"<[^>]+>", " ", content_html or "")
+        text = re.sub(r"\s+", " ", text).strip()
+        if len(text) > 60:
+            data["text"] = text
+            data["title_article"] = data["title_article"] or doc.short_title()
+            return data
+    except Exception:
+        pass
+
+    # --- 4) boilerpy3 fallback ---
+    try:
+        from boilerpy3 import extractors
+        if html is None:
+            resp = requests.get(url, headers=headers, timeout=20)
+            if not resp.ok:
+                raise RuntimeError("HTTP not OK")
+            resp.encoding = resp.apparent_encoding or resp.encoding
+            html = resp.text
+        extractor = extractors.ArticleExtractor()
+        text = extractor.get_content(html)
+        text = re.sub(r"\s+", " ", text or "").strip()
+        if len(text) > 60:
+            data["text"] = text
+            return data
+    except Exception:
+        pass
+
+    # --- 5) jusText fallback ---
+    try:
+        import justext
+        if html is None:
+            resp = requests.get(url, headers=headers, timeout=20)
+            if not resp.ok:
+                raise RuntimeError("HTTP not OK")
+            resp.encoding = resp.apparent_encoding or resp.encoding
+            html = resp.text
+        paragraphs = justext.justext(html.encode(resp.encoding or "utf-8", errors="ignore"), justext.get_stoplist("Indonesian"))
+        text = " ".join(p.text for p in paragraphs if not p.is_boilerplate)
+        text = re.sub(r"\s+", " ", text or "").strip()
+        if len(text) > 60:
+            data["text"] = text
+            return data
+    except Exception:
+        pass
+
+    # Jika semua gagal, kembalikan dict minimal
     return data
 
 @st.cache_data(show_spinner=False)
@@ -316,6 +437,7 @@ if run_btn:
 
     df = df_seed.merge(df_art, on="url", how="left")
     # --- setelah merge df_seed & df_art ---
+    # --- setelah merge df_seed & df_art ---
     df["title_final"] = df["title_article"].fillna(df["title"])
     df["publish_final"] = df["publish_date"].fillna(df["published"])
     
@@ -328,16 +450,23 @@ if run_btn:
     # (opsional) bersihkan whitespace berlebih
     df["text"] = df["text"].str.replace(r"\s+", " ", regex=True).str.strip()
     
-    # Hitung artikel yang berhasil diekstrak (panjang > 120)
-    success_cnt = int((df["text"].str.len() > 120).sum())
+    # >>> DI SINI kamu taruh blok debug + filter panjang teks <<<
+    df["len_text"] = df["text"].str.len()
+    
+    st.caption("🔎 Debug ekstraksi (panjang teks)")
+    dbg = df["len_text"].describe(percentiles=[0.25, 0.5, 0.75]).to_frame("len_text_stats")
+    st.dataframe(dbg.T, use_container_width=True)
+    
+    MIN_LEN = 80  # sebelumnya 120
+    success_cnt = int((df["len_text"] > MIN_LEN).sum())
     if success_cnt == 0:
-        st.warning("Semua ekstraksi gagal/terlalu pendek. Coba backend lain, tambah jumlah, atau ganti user-agent.")
+        st.warning("Semua ekstraksi gagal/terlalu pendek. Coba backend lain, tambah jumlah, ganti timespan/keyword, atau set User-Agent.")
         with st.expander("Lihat URL kandidat (debug)"):
             st.write(df[["title_final", "url"]])
         st.stop()
     
-    # Hanya pertahankan artikel yang punya teks cukup panjang
-    df = df[df["text"].str.len() > 120].copy()
+    df = df[df["len_text"] > MIN_LEN].copy()
+
 
     # 3) Sentiment
     with st.status("🧠 Memuat model & menganalisis sentimen...", expanded=False) as status:
