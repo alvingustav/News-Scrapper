@@ -105,9 +105,11 @@ ALL_FEEDS = [(src, url) for src, urls in INDONESIA_FEEDS.items() for url in urls
 @st.cache_resource(show_spinner=False)
 def load_models():
     """
-    Pertama coba Indonesian 3-class, kalau gagal fallback ke multilingual 1–5 stars.
+    Pertama coba Indonesian 3-class, fallback ke multilingual 1–5 stars.
+    Set pipeline dengan padding & max_length untuk stabilitas.
     """
     from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
+
     tried = []
     for model_name, tag in [
         ("w11wo/indonesian-roberta-base-sentiment-classifier", "id-3c"),
@@ -115,13 +117,39 @@ def load_models():
     ]:
         try:
             tok = AutoTokenizer.from_pretrained(model_name)
+            # Pastikan max_length aman
+            if not hasattr(tok, "model_max_length") or tok.model_max_length is None or tok.model_max_length > 512_000:
+                tok.model_max_length = 512
             mdl = AutoModelForSequenceClassification.from_pretrained(model_name)
-            clf = pipeline("sentiment-analysis", model=mdl, tokenizer=tok, truncation=True)
+            clf = pipeline(
+                "text-classification",              # alias sentiment-analysis
+                model=mdl,
+                tokenizer=tok,
+                truncation=True,
+                padding=True,
+                max_length=512,
+                framework="pt",                     # pakai PyTorch
+                return_all_scores=False
+            )
             return {"pipe": clf, "tag": tag, "model_name": model_name}
         except Exception as e:
             tried.append((model_name, str(e)))
             continue
     raise RuntimeError(f"Gagal memuat model. Tried: {tried}")
+
+@st.cache_resource(show_spinner=False)
+def load_fallback_pipeline():
+    from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
+    model_name = "nlptown/bert-base-multilingual-uncased-sentiment"
+    tok = AutoTokenizer.from_pretrained(model_name)
+    tok.model_max_length = 512
+    mdl = AutoModelForSequenceClassification.from_pretrained(model_name)
+    return pipeline(
+        "text-classification",
+        model=mdl, tokenizer=tok,
+        truncation=True, padding=True, max_length=512,
+        framework="pt", return_all_scores=False
+    )
 
 def _map_label(pred: Dict, tag: str):
     lab = pred["label"].lower()
@@ -141,15 +169,63 @@ def _map_label(pred: Dict, tag: str):
         return "netral", sc
     return "positif", sc
 
-def batch_sentiment(texts: List[str], clf_bundle: Dict, batch_size: int = 16):
-    pipe = clf_bundle["pipe"]; tag = clf_bundle["tag"]
+def _safe_text(s: str) -> str:
+    """Pastikan string dan batasi panjang supaya tokenisasi stabil."""
+    if not isinstance(s, str):
+        s = "" if s is None else str(s)
+    s = s.strip()
+    if len(s) > 6000:
+        s = s[:6000]  # potong teks ekstrem panjang
+    return s
+
+def batch_sentiment(texts: List[str], clf_bundle: Dict, batch_size: int = 8):
+    """
+    Jalankan inferensi dengan padding & truncation.
+    Jika batch gagal, retry per-item.
+    Jika tetap gagal, fallback ke pipeline multilingual.
+    """
+    pipe = clf_bundle["pipe"]
+    tag = clf_bundle["tag"]
     labels, scores = [], []
-    for i in range(0, len(texts), batch_size):
-        chunk = texts[i:i+batch_size]
-        results = pipe(chunk, truncation=True)
-        for r in results:
-            l, s = _map_label(r, tag)
-            labels.append(l); scores.append(s)
+
+    i = 0
+    while i < len(texts):
+        chunk_raw = texts[i:i+batch_size]
+        chunk = [_safe_text(t) for t in chunk_raw]
+        try:
+            results = pipe(chunk, truncation=True, padding=True, max_length=512)
+            for r in results:
+                l, s = _map_label(r, tag)
+                labels.append(l); scores.append(s)
+            i += batch_size
+        except Exception:
+            # Retry satu per satu
+            for t in chunk:
+                try:
+                    r = pipe(t, truncation=True, padding=True, max_length=512)[0]
+                    l, s = _map_label(r, tag)
+                    labels.append(l); scores.append(s)
+                except Exception:
+                    # Fallback multilingual
+                    try:
+                        fb = load_fallback_pipeline()
+                        r2 = fb(t, truncation=True, padding=True, max_length=512)[0]
+                        # map label untuk multilingual
+                        lab = r2["label"].lower()
+                        sc = float(r2.get("score", 0.0))
+                        m = re.search(r"(\d)", lab)
+                        stars = int(m.group(1)) if m else 3
+                        if stars <= 2:
+                            labels.append("negatif"); scores.append(sc)
+                        elif stars == 3:
+                            labels.append("netral"); scores.append(sc)
+                        else:
+                            labels.append("positif"); scores.append(sc)
+                    except Exception:
+                        # kalau betul-betul gagal, tandai netral confidence 0
+                        labels.append("netral"); scores.append(0.0)
+            i += batch_size
+
     return labels, scores
 
 # ===================== Pencarian RSS: Media Lokal =====================
@@ -454,7 +530,7 @@ if run_btn:
         except Exception as e:
             st.error(f"Gagal memuat model: {e}")
             st.stop()
-        labels, scores = batch_sentiment(df["text"].tolist(), bundle, batch_size=16)
+        labels, scores = batch_sentiment(df["text"].tolist(), bundle, batch_size=8)
         status.update(label=f"Klasifikasi selesai (model: {bundle['model_name']}).", state="complete")
 
     df["sentiment"] = labels
