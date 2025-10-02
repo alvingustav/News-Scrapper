@@ -15,3 +15,5 @@ transformers>=4.43
 torch>=2.2
 sentencepiece>=0.1.99
 tqdm>=4.66
+boilerpy3>=1.0.6
+justext>=3.0.0
