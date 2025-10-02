@@ -181,7 +181,7 @@ INDONESIA_FEEDS: Dict[str, List[str]] = {
         "https://www.thejakartapost.com/tech/rss",
     ],
 
-    # ======== Suara Network / Kumparan / dll ========
+    # ======== Suara Network / TV/Radio ========
     "Suara": [
         "https://www.suara.com/rss",
         "https://www.suara.com/bisnis/rss",
@@ -201,6 +201,7 @@ INDONESIA_FEEDS: Dict[str, List[str]] = {
         "https://www.pikiran-rakyat.com/jawa-barat/rss",
         "https://www.pikiran-rakyat.com/ekonomi/rss",
         "https://www.pikiran-rakyat.com/teknologi/rss",
+        "https://www.pikiran-rakyat.com/bandung-raya/rss",
     ],
     "Jawa Pos": [
         "https://www.jawapos.com/feed/",
@@ -218,6 +219,19 @@ INDONESIA_FEEDS: Dict[str, List[str]] = {
     ],
     "Antara Jabar": [
         "https://jabar.antaranews.com/rss",
+        "https://jabar.antaranews.com/rss/berita",
+    ],
+    "Bandung Bisnis": [
+        "https://bandung.bisnis.com/rss",
+    ],
+    "PRFM News (Bandung)": [
+        "https://www.prfmnews.id/rss",   # jika tidak aktif, hapus
+    ],
+    "Jabar Ekspres (Radar Bandung)": [
+        "https://jabarekspres.com/rss",  # jika tidak aktif, hapus
+    ],
+    "Galamedia (PR Network)": [
+        "https://galamedia.pikiran-rakyat.com/feed",  # jika tidak aktif, hapus
     ],
     "Bali Post": [
         "https://www.balipost.com/feed",
