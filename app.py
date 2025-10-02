@@ -92,6 +92,33 @@ if run_btn:
     urls = [n["url"] for n in news if n.get("url")]
     with st.spinner("📥 Mengunduh artikel..."):
         articles = fetch_articles(urls)
+        # Pastikan kolom standar ada walaupun articles == []
+        STD_COLS = ["url", "title", "text", "publish_date"]
+        df = pd.DataFrame(articles)
+        for c in STD_COLS:
+            if c not in df.columns:
+                df[c] = None
+        
+        # Hitung yang berhasil ter-ekstrak
+        success_cnt = int(df["text"].notna().sum())
+        total_cnt = len(df)
+        
+        # Jika semua gagal, hentikan dengan pesan ramah
+        if total_cnt == 0 or success_cnt == 0:
+            st.warning(
+                "Tidak ada artikel yang berhasil diambil. "
+                "Coba ganti kata kunci/rentang waktu, atau pilih negara/bahasa lain. "
+                "Beberapa situs bisa memblokir crawler."
+            )
+            # Opsi: tampilkan daftar URL kandidat agar bisa dicek manual
+            if total_cnt == 0:
+                st.info("Daftar URL dari Google News kosong. Coba naikkan `Jumlah berita` atau perpanjang `Rentang waktu`.")
+            else:
+                st.expander("Lihat URL kandidat (debug)").write(df[["url"]])
+            st.stop()
+        
+        # Hanya pertahankan artikel yang punya teks
+        df = df[df["text"].notna()].copy()
 
     df = pd.DataFrame(articles)
     df = df[df["text"].notna()]
