@@ -11,7 +11,6 @@ import numpy as np
 import requests
 import streamlit as st
 from gnews import GNews
-from newspaper import Article, Config
 
 # ======== Streamlit Page Config ========
 st.set_page_config(page_title="Sentimen Berita", page_icon="📰", layout="wide")
@@ -95,19 +94,47 @@ def _download_parse_article(url: str, cfg: Config, timeout: int = 20) -> Dict:
 
 
 @st.cache_data(show_spinner=False)
-def fetch_articles(urls: List[str], user_agent: str = None, max_workers: int = 12):
+import trafilatura
+
+def fetch_articles(urls, max_workers: int = 12):
     """
-    Ambil isi artikel untuk banyak URL secara paralel.
+    Ambil isi artikel untuk banyak URL memakai trafilatura (tanpa newspaper3k).
     """
-    cfg = Config()
-    cfg.request_timeout = 20
-    cfg.browser_user_agent = user_agent or (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    )
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     out = []
+    cfg = trafilatura.settings.use_config()
+    cfg.set("DEFAULT", "EXTRACTION_TIMEOUT", "20")
+    cfg.set("DEFAULT", "EXTRACTION_TECHNIQUE", "fast")  # cepat & cukup akurat
+
+    def _one(u):
+        data = {"url": u, "title_article": None, "top_image": None, "text": None,
+                "authors": None, "publish_date": None, "meta_desc": None}
+        try:
+            downloaded = trafilatura.fetch_url(u, no_ssl=True)
+            if not downloaded:
+                return data
+            result = trafilatura.extract(
+                downloaded,
+                include_comments=False,
+                include_tables=False,
+                with_metadata=True,
+                config=cfg,
+            )
+            if not result:
+                return data
+            meta = trafilatura.metadata.extract_metadata(downloaded)
+            data["text"] = result
+            if meta:
+                data["title_article"] = meta.title
+                data["authors"] = ", ".join(meta.author) if meta.author else None
+                data["publish_date"] = meta.date
+                data["meta_desc"] = meta.description
+            return data
+        except Exception:
+            return data
+
     with ThreadPoolExecutor(max_workers=max_workers) as ex:
-        futures = {ex.submit(_download_parse_article, u, cfg): u for u in urls}
+        futures = {ex.submit(_one, u): u for u in urls}
         for fut in as_completed(futures):
             out.append(fut.result())
     return out
