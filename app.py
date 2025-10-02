@@ -315,18 +315,38 @@ if run_btn:
             df_art[c] = None
 
     df = df_seed.merge(df_art, on="url", how="left")
+    # --- setelah merge ---
     df["title_final"] = df["title_article"].fillna(df["title"])
     df["publish_final"] = df["publish_date"].fillna(df["published"])
-    df["text"] = (df["text"] or pd.Series(dtype=str)).fillna("")
+    
+    # Pastikan kolom 'text' selalu ada & berupa string
+    if "text" not in df.columns:
+        df["text"] = ""
+    else:
+        df["text"] = df["text"].fillna("").astype(str)
+    
+    # (opsional) buang whitespace berlebih
+    df["text"] = df["text"].str.replace(r"\s+", " ", regex=True).str.strip()
 
+# Hitung berapa yang berhasil diekstrak (panjang > 120)
     success_cnt = int((df["text"].str.len() > 120).sum())
     if success_cnt == 0:
         st.warning("Semua ekstraksi gagal/terlalu pendek. Coba backend lain, tambah jumlah, atau ganti user-agent.")
         with st.expander("Lihat URL kandidat (debug)"):
             st.write(df[["title_final", "url"]])
         st.stop()
-
+    
+    # Hanya pertahankan artikel yang punya teks cukup
     df = df[df["text"].str.len() > 120].copy()
+    
+        success_cnt = int((df["text"].str.len() > 120).sum())
+        if success_cnt == 0:
+            st.warning("Semua ekstraksi gagal/terlalu pendek. Coba backend lain, tambah jumlah, atau ganti user-agent.")
+            with st.expander("Lihat URL kandidat (debug)"):
+                st.write(df[["title_final", "url"]])
+            st.stop()
+    
+        df = df[df["text"].str.len() > 120].copy()
 
     # 3) Sentiment
     with st.status("🧠 Memuat model & menganalisis sentimen...", expanded=False) as status:
