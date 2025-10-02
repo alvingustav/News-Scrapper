@@ -1,19 +1,20 @@
+# --- App Core ---
 streamlit>=1.36
 pandas>=2.0
 numpy>=1.24
 requests>=2.31
 feedparser>=6.0.11
-trafilatura>=1.9
-readability-lxml>=0.8.1
 python-dateutil>=2.9
 
-# optional but useful
-gnews>=0.3.7
+# --- Ekstraksi Artikel ---
+trafilatura>=1.9
+readability-lxml>=0.8.1
+boilerpy3>=1.0.6
+justext>=3.0.0
+beautifulsoup4>=4.12
 
-# NLP
+# --- NLP / Sentiment Analysis ---
 transformers>=4.43
 torch>=2.2
 sentencepiece>=0.1.99
 tqdm>=4.66
-boilerpy3>=1.0.6
-justext>=3.0.0
