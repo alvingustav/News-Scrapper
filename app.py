@@ -110,6 +110,23 @@ INDONESIA_FEEDS: Dict[str, List[str]] = {
         "https://www.idntimes.com/business/rss",
         "https://www.idntimes.com/tech/rss",
     ],
+    # --- Tambahan Media Utama ---
+    "Sindonews": [
+        "https://www.sindonews.com/rss",
+        "https://ekbis.sindonews.com/rss",
+        "https://tekno.sindonews.com/rss",
+        "https://metro.sindonews.com/rss",
+    ],
+    "Medcom": [
+        "https://www.medcom.id/rss",
+        "https://www.medcom.id/ekonomi/rss",
+        "https://www.medcom.id/teknologi/rss",
+    ],
+    "JPNN": [
+        "https://www.jpnn.com/rss",
+        "https://www.jpnn.com/ekonomi/rss",
+        "https://www.jpnn.com/teknologi/rss",
+    ],
 
     # ======== Bisnis/Ekonomi/Keuangan ========
     "Bisnis.com": [
@@ -135,6 +152,12 @@ INDONESIA_FEEDS: Dict[str, List[str]] = {
     "Fajar.co.id (Bisnis)": [
         "https://fajar.co.id/feed/",
     ],
+    # --- Tambahan Media Bisnis ---
+    "Warta Ekonomi": [
+        "https://www.wartaekonomi.co.id/rss",
+        "https://www.wartaekonomi.co.id/tag/ekonomi/feed",
+        "https://www.wartaekonomi.co.id/tag/keuangan/feed",
+    ],
 
     # ======== Media Digital/Analitis ========
     "Tirto": [
@@ -152,22 +175,6 @@ INDONESIA_FEEDS: Dict[str, List[str]] = {
         "https://mediaindonesia.com/ekonomi/rss",
         "https://mediaindonesia.com/teknologi/rss",
     ],
-    "JPNN": [
-        "https://www.jpnn.com/rss",
-        "https://www.jpnn.com/ekonomi/rss",
-        "https://www.jpnn.com/teknologi/rss",
-    ],
-    "SINDOnews": [
-        "https://www.sindonews.com/rss",
-        "https://ekbis.sindonews.com/rss",
-        "https://tekno.sindonews.com/rss",
-        "https://metro.sindonews.com/rss",
-    ],
-    "Medcom": [
-        "https://www.medcom.id/rss",
-        "https://www.medcom.id/ekonomi/rss",
-        "https://www.medcom.id/teknologi/rss",
-    ],
     "Gatra": [
         "https://www.gatra.com/rss",
         "https://www.gatra.com/ekonomi/rss",
@@ -183,6 +190,10 @@ INDONESIA_FEEDS: Dict[str, List[str]] = {
         "https://www.thejakartapost.com/business/rss",
         "https://www.thejakartapost.com/tech/rss",
     ],
+    "Beritagar": [
+        "https://beritagar.id/rss",
+        "https://beritagar.id/tag/ekonomi/rss",
+    ],
 
     # ======== Suara Network / TV/Radio ========
     "Suara": [
@@ -196,6 +207,9 @@ INDONESIA_FEEDS: Dict[str, List[str]] = {
     ],
     "RRI": [
         "https://rri.co.id/feed",
+    ],
+    "Inilah.com": [
+        "https://inilah.com/rss",
     ],
 
     # ======== Regional/Bermarkas di Daerah ========
@@ -228,13 +242,13 @@ INDONESIA_FEEDS: Dict[str, List[str]] = {
         "https://bandung.bisnis.com/rss",
     ],
     "PRFM News (Bandung)": [
-        "https://www.prfmnews.id/rss",   # jika tidak aktif, hapus
+        "https://www.prfmnews.id/rss",
     ],
     "Jabar Ekspres (Radar Bandung)": [
-        "https://jabarekspres.com/rss",  # jika tidak aktif, hapus
+        "https://jabarekspres.com/rss",
     ],
     "Galamedia (PR Network)": [
-        "https://galamedia.pikiran-rakyat.com/feed",  # jika tidak aktif, hapus
+        "https://galamedia.pikiran-rakyat.com/feed",
     ],
     "Bali Post": [
         "https://www.balipost.com/feed",
@@ -246,6 +260,16 @@ INDONESIA_FEEDS: Dict[str, List[str]] = {
         "https://www.idntimes.com/jabar/rss",
         "https://www.idntimes.com/sulsel/rss",
         "https://www.idntimes.com/jatim/rss",
+    ],
+    # --- Tambahan Media Regional ---
+    "Suara Surabaya": [
+        "https://rss.suarasurabaya.net/rss",
+    ],
+    "Kaltim Post": [
+        "https://kaltim.prokal.co/feed",
+    ],
+    "Tribun Jogja": [
+        "https://jogja.tribunnews.com/rss",
     ],
 
     # ======== Teknologi & Startup Lokal ========
@@ -262,6 +286,16 @@ INDONESIA_FEEDS: Dict[str, List[str]] = {
     "Tech in Asia Indonesia": [
         "https://id.techinasia.com/feed",
     ],
+    # --- Tambahan Media Tekno ---
+    "Teknologi ID": [
+        "https://teknologi.id/rss",
+    ],
+    "Gadgetren": [
+        "https://gadgetren.com/feed",
+    ],
+    "InfoKomputer": [
+        "https://infokomputer.grid.id/rss",
+    ],
 
     # ======== Pemerintah/Resmi (untuk konfirmasi narasi) ========
     "Setkab": [
@@ -272,7 +306,7 @@ INDONESIA_FEEDS: Dict[str, List[str]] = {
         "https://www.kemenkeu.go.id/publikasi/siaran-pers/feed/",
     ],
     "BI (Bank Indonesia) News": [
-        "https://www.bi.go.id/id/publikasi/ruang-media/news/Default.aspx?rss=1",  # jika tidak aktif, hapus
+        "https://www.bi.go.id/id/publikasi/ruang-media/news/Default.aspx?rss=1",
     ],
 }
 
