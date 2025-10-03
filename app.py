@@ -526,56 +526,48 @@ NEWSAPI_KEY = "60448de50608492983ffdf1a9f4379cf"
 
 # ====== Fallback Search ======
 def search_google_news_rss(keywords: List[str], limit: int = 50) -> List[Dict]:
-    """TIDAK pakai Google News RSS, tapi RSS langsung dari portal"""
-    out = []  # ✅ Konsisten dengan kode sebelumnya
-    
-    # RSS alternatif untuk coverage internasional
-    alt_feeds = [
-        "https://rss.cnn.com/rss/edition.rss",
-        "https://feeds.bbci.co.uk/news/rss.xml", 
-        "https://rss.reuters.com/news/rss/topNews",
-        "https://feeds.npr.org/1001/rss.xml"
+    """Ganti dengan RSS Indonesia tambahan yang lebih relevan"""
+    extra_feeds = [
+        ("BBC Indonesia", "https://feeds.bbci.co.uk/indonesia/rss.xml"),
+        ("VOA Indonesia", "https://www.voaindonesia.com/api/z$qmgqpyvm"),
+        ("DW Indonesia", "https://rss.dw.com/xml/rss-id-all"),
+        ("RFI Indonesia", "https://www.rfi.fr/id/rss"),
     ]
     
-    for feed_url in alt_feeds:
+    out = []
+    for name, feed_url in extra_feeds:
         try:
+            st.caption(f"🔍 Mencoba {name}...")
             feed = feedparser.parse(feed_url)
-            for entry in feed.entries[:limit//len(alt_feeds)]:
-                title = (entry.title or "").lower()
-                summary = (getattr(entry, 'summary', '') or "").lower()
-                
-                # Cek keyword match
-                matched_kw = [kw for kw in keywords if kw.lower() in title or kw.lower() in summary]
-                if matched_kw:
+            st.caption(f"📡 {name}: {len(feed.entries)} entries")
+            
+            for entry in feed.entries[:limit//len(extra_feeds)]:
+                hits = matches_keyword_multi(entry, keywords)
+                if hits:
                     out.append({
                         "title": entry.title,
-                        "url": entry.link,  # URL langsung, bukan redirect
-                        "source": f"International ({feed_url.split('//')[-1].split('/')[0]})",
+                        "url": entry.link,
+                        "source": name,
                         "published": getattr(entry, "published", None),
                         "desc": getattr(entry, "summary", ""),
-                        "hit_keywords": ", ".join(matched_kw),
+                        "hit_keywords": ", ".join(hits),
                     })
-                if len(out) >= limit:
-                    break
-        except Exception:
-            continue
-        if len(out) >= limit:
-            break
-            
-    return out[:limit]  # ✅ Return out, bukan results
+        except Exception as e:
+            st.caption(f"❌ {name}: {str(e)}")
+    
+    return out
 
 
 def search_newsapi(keywords: List[str], limit: int = 50) -> List[Dict]:
-    """Implementasi NewsAPI dengan debugging"""
+    """Implementasi NewsAPI dengan debugging yang terlihat di UI"""
     out = []
     if not NEWSAPI_KEY:
-        print("❌ NewsAPI: API key tidak ada")
+        st.caption("❌ NewsAPI: API key tidak tersedia")
         return out
         
     try:
-        # Gabung keywords dengan OR
         query = " OR ".join(keywords)
-        print(f"🔍 NewsAPI query: {query}")
+        st.caption(f"🔍 NewsAPI query: {query}")
         
         url = "https://newsapi.org/v2/top-headlines"
         params = {
@@ -587,18 +579,17 @@ def search_newsapi(keywords: List[str], limit: int = 50) -> List[Dict]:
         }
         
         response = requests.get(url, params=params, timeout=15)
-        print(f"📡 NewsAPI status: {response.status_code}")
+        st.caption(f"📡 NewsAPI status: {response.status_code}")
         
         if response.status_code == 200:
             data = response.json()
             articles = data.get("articles", [])
-            print(f"📰 NewsAPI raw articles: {len(articles)}")
+            st.caption(f"📰 NewsAPI raw articles: {len(articles)}")
             
             for article in articles:
                 title = (article.get("title") or "").lower()
                 desc = (article.get("description") or "").lower()
                 
-                # Check keyword match
                 matched = [k for k in keywords if k.lower() in title or k.lower() in desc]
                 if matched:
                     out.append({
@@ -609,13 +600,17 @@ def search_newsapi(keywords: List[str], limit: int = 50) -> List[Dict]:
                         "desc": article.get("description"),
                         "hit_keywords": ", ".join(matched),
                     })
+        elif response.status_code == 429:
+            st.caption("⚠️ NewsAPI: Rate limit exceeded")
+        elif response.status_code == 401:
+            st.caption("❌ NewsAPI: API key invalid")
         else:
-            print(f"❌ NewsAPI error: {response.text}")
+            st.caption(f"❌ NewsAPI error {response.status_code}: {response.text[:100]}")
             
     except Exception as e:
-        print(f"❌ NewsAPI exception: {str(e)}")
+        st.caption(f"❌ NewsAPI exception: {str(e)}")
         
-    print(f"✅ NewsAPI hasil: {len(out)} artikel")
+    st.caption(f"✅ NewsAPI hasil: {len(out)} artikel")
     return out
 
 def search_berita_indo_api(keywords: List[str], limit: int = 50) -> List[Dict]:
