@@ -738,13 +738,22 @@ def fetch_article(url: str, user_agent: Optional[str] = None) -> Dict:
 
     UA = user_agent or (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        "(KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36"
     )
     headers = {
         "User-Agent": UA,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
         "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Cache-Control": "no-cache", "Pragma": "no-cache", "Connection": "keep-alive",
+        "Accept-Encoding": "gzip, deflate, br",
+        "DNT": "1",
+        "Connection": "keep-alive",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+        "Referer": "https://www.google.com/",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate", 
+        "Sec-Fetch-Site": "cross-site",
+        "Upgrade-Insecure-Requests": "1"
     }
 
     def _fill_meta_from_traf(downloaded: str):
@@ -868,13 +877,21 @@ def fetch_article(url: str, user_agent: Optional[str] = None) -> Dict:
     return data
 
 @st.cache_data(show_spinner=False)
-def fetch_articles(urls: List[str], user_agent: Optional[str] = None, max_workers: int = 12):
+def fetch_articles(urls: List[str], user_agent: Optional[str] = None, max_workers: int = 6):
+    import time
+    import random
+    
+    def fetch_with_delay(url):
+        time.sleep(random.uniform(0.5, 2.0))  # Random delay 0.5-2s
+        return fetch_article(url, user_agent)
+    
     out = []
-    with ThreadPoolExecutor(max_workers=max_workers) as ex:
-        futures = {ex.submit(fetch_article, u, user_agent): u for u in urls}
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:  # Reduced from 12 to 6
+        futures = [ex.submit(fetch_with_delay, u) for u in urls]
         for fut in as_completed(futures):
             out.append(fut.result())
     return out
+
 
 # ===================== Sidebar =====================
 with st.sidebar:
