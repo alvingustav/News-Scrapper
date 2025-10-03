@@ -13,6 +13,7 @@ import feedparser
 from dateutil import parser as dtparser
 
 from zoneinfo import ZoneInfo
+from typing import List, Dict, Optional
 
 # ===================== Streamlit Config =====================
 st.set_page_config(page_title="Sentimen Berita Lokal 🇮🇩", page_icon="📰", layout="wide")
@@ -524,7 +525,7 @@ def search_indonesia_rss(
 NEWSAPI_KEY = "60448de50608492983ffdf1a9f4379cf"
 
 # ====== Fallback Search ======
-def search_google_news_rss(keywords: list[str], limit: int = 50) -> list[dict]:
+def search_google_news_rss(keywords: List[str], limit: int = 50) -> List[Dict]:
     out = []
     for kw in keywords:
         url = (
@@ -546,7 +547,7 @@ def search_google_news_rss(keywords: list[str], limit: int = 50) -> list[dict]:
             )
     return out
 
-def search_newsapi(keywords: list[str], limit: int = 50) -> list[dict]:
+def search_newsapi(keywords: List[str], limit: int = 50) -> List[Dict]:
     if not NEWSAPI_KEY:
         return []
     q = " OR ".join(keywords)
@@ -580,7 +581,7 @@ def search_newsapi(keywords: list[str], limit: int = 50) -> list[dict]:
             )
     return out[:limit]
 
-def search_berita_indo_api(keywords: list[str], limit: int = 50) -> list[dict]:
+def search_berita_indo_api(keywords: List[str], limit: int = 50) -> List[Dict]:
     endpoints = [
         "https://berita-indo-api-next.vercel.app/api/cnn-news",
         "https://berita-indo-api-next.vercel.app/api/cnbc-news",
@@ -610,15 +611,33 @@ def search_berita_indo_api(keywords: list[str], limit: int = 50) -> list[dict]:
             continue
     return out[:limit]
 
+def matches_keyword_multi(entry, keywords: List[str]) -> List[str]:
+    """
+    Mengembalikan list keyword yang match dengan entry RSS
+    """
+    kw_matches = []
+    title = (getattr(entry, "title", "") or "").lower()
+    summary = (getattr(entry, "summary", "") or "").lower()
+    
+    for keyword in keywords:
+        kw = keyword.strip().lower()
+        if not kw:
+            continue
+        if kw in title or kw in summary:
+            kw_matches.append(keyword)
+    
+    return kw_matches
+
+
 # ====== Master search ======
 @st.cache_data(show_spinner=False)
 def search_multi_source(
-    keywords: list[str],
+    keywords: List[str],
     max_results: int,
-    date_start: datetime.date | None = None,
-    date_end: datetime.date | None = None,
+    date_start: Optional[datetime.date] = None,
+    date_end: Optional[datetime.date] = None,
     max_workers: int = 32,
-) -> list[dict]:
+) -> List[Dict]:
     def _fetch(src, url):
         try:
             return src, feedparser.parse(url)
@@ -842,7 +861,7 @@ with st.sidebar:
     st.header("⚙️ Pengaturan")
     # BARU:
     raw_keywords = st.text_input("Kata kunci (pisahkan dengan koma)", "inflasi, suku bunga")
-    keywords = [k.strip() for k in re.split(r"[,;]", raw_keywords) if k.strip()]
+    keywords = [k.strip() for k in re.split(r"[;,]", raw_kw) if k.strip()]
     max_results = st.slider("Jumlah berita (maks)", 10, 200, 60, 10)
 
     # rentang tanggal (WIB). default: 14 hari ke belakang s/d hari ini
