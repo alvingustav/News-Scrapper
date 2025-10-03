@@ -619,10 +619,18 @@ def search_newsapi(keywords: List[str], limit: int = 50) -> List[Dict]:
             data = response.json()
             articles = data.get("articles", [])
             st.caption(f"📰 NewsAPI raw articles: {len(articles)}")
+
             
             for article in articles:
                 title = (article.get("title") or "").lower()
                 desc = (article.get("description") or "").lower()
+                matched = [k for k in keywords if k.lower() in title or k.lower() in desc]
+                if not matched:
+                    continue
+                if not is_in_date_range_str(article.get("publishedAt"), date_start, date_end):
+                    continue
+                out.append({...})
+
                 
                 matched = [k for k in keywords if k.lower() in title or k.lower() in desc]
                 if matched:
