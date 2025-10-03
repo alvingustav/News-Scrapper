@@ -520,6 +520,170 @@ def search_indonesia_rss(
 
     return rows[:max_results]
 
+# ====== Konstanta ======
+NEWSAPI_KEY = "60448de50608492983ffdf1a9f4379cf"
+
+# ====== Fallback Search ======
+def search_google_news_rss(keywords: list[str], limit: int = 50) -> list[dict]:
+    out = []
+    for kw in keywords:
+        url = (
+            "https://news.google.com/rss/search?"
+            + urllib.parse.urlencode(
+                {"q": f"{kw} Indonesia", "hl": "id", "gl": "ID", "ceid": "ID:id"}
+            )
+        )
+        for e in feedparser.parse(url).entries[:limit]:
+            out.append(
+                {
+                    "title": e.title,
+                    "url": e.link,
+                    "source": "Google News",
+                    "published": getattr(e, "published", None),
+                    "desc": getattr(e, "summary", None),
+                    "hit_keywords": kw,
+                }
+            )
+    return out
+
+def search_newsapi(keywords: list[str], limit: int = 50) -> list[dict]:
+    if not NEWSAPI_KEY:
+        return []
+    q = " OR ".join(keywords)
+    r = requests.get(
+        "https://newsapi.org/v2/top-headlines",
+        params={
+            "q": q,
+            "language": "id",
+            "country": "id",
+            "pageSize": min(limit, 100),
+            "apiKey": NEWSAPI_KEY,
+        },
+        timeout=15,
+    )
+    data = r.json() if r.status_code == 200 else {}
+    out = []
+    for art in data.get("articles", []):
+        title = (art.get("title") or "").lower()
+        desc = (art.get("description") or "").lower()
+        hits = [kw for kw in keywords if kw.lower() in title or kw.lower() in desc]
+        if hits:
+            out.append(
+                {
+                    "title": art["title"],
+                    "url": art["url"],
+                    "source": f"NewsAPI ({art['source']['name']})",
+                    "published": art["publishedAt"],
+                    "desc": art["description"],
+                    "hit_keywords": ", ".join(hits),
+                }
+            )
+    return out[:limit]
+
+def search_berita_indo_api(keywords: list[str], limit: int = 50) -> list[dict]:
+    endpoints = [
+        "https://berita-indo-api-next.vercel.app/api/cnn-news",
+        "https://berita-indo-api-next.vercel.app/api/cnbc-news",
+        "https://berita-indo-api-next.vercel.app/api/republika-news",
+    ]
+    out = []
+    for ep in endpoints:
+        try:
+            for art in requests.get(ep, timeout=10).json().get("data", []):
+                if len(out) >= limit:
+                    break
+                title = (art["title"] or "").lower()
+                desc = (art["description"] or "").lower()
+                hits = [kw for kw in keywords if kw.lower() in title or kw.lower() in desc]
+                if hits:
+                    out.append(
+                        {
+                            "title": art["title"],
+                            "url": art["url"],
+                            "source": f"BeritaIndo ({ep.split('/')[-1]})",
+                            "published": art["isoDate"],
+                            "desc": art["description"],
+                            "hit_keywords": ", ".join(hits),
+                        }
+                    )
+        except Exception:
+            continue
+    return out[:limit]
+
+# ====== Master search ======
+@st.cache_data(show_spinner=False)
+def search_multi_source(
+    keywords: list[str],
+    max_results: int,
+    date_start: datetime.date | None = None,
+    date_end: datetime.date | None = None,
+    max_workers: int = 32,
+) -> list[dict]:
+    def _fetch(src, url):
+        try:
+            return src, feedparser.parse(url)
+        except Exception:
+            return src, None
+
+    rows: list[dict] = []
+    # --- 1) RSS lokal paralel ---
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        for src, feed in (
+            fut.result()
+            for fut in as_completed(
+                [ex.submit(_fetch, s, u) for s, u in ALL_FEEDS]
+            )
+        ):
+            if not feed:
+                continue
+            for e in feed.entries:
+                hits = matches_keyword_multi(e, keywords)
+                if not hits:
+                    continue
+                link = getattr(e, "link", "")
+                if not link:
+                    continue
+                dt = parse_entry_date(e)
+                if (date_start or date_end) and (
+                    dt is None
+                    or (date_start and dt.date() < date_start)
+                    or (date_end and dt.date() > date_end)
+                ):
+                    continue
+                rows.append(
+                    dict(
+                        title=e.title,
+                        url=link,
+                        source=src,
+                        published=dt.isoformat() if dt else getattr(e, "published", None),
+                        desc=getattr(e, "summary", None),
+                        hit_keywords=", ".join(hits),
+                    )
+                )
+
+    # --- 2) Fallback Google News RSS jika <10 ---
+    if len(rows) < 10:
+        rows.extend(search_google_news_rss(keywords, max_results // 2))
+
+    # --- 3) Tambah NewsAPI — selalu dijalankan bila masih kurang ---
+    if len(rows) < max_results:
+        rows.extend(search_newsapi(keywords, max_results // 3))
+
+    # --- 4) Tambah Berita Indo API ---
+    if len(rows) < max_results:
+        rows.extend(search_berita_indo_api(keywords, max_results // 4))
+
+    # --- deduplikasi & sort ---
+    uniq = {r["url"]: r for r in rows}.values()
+    rows_sorted = sorted(
+        uniq,
+        key=lambda r: dtparser.parse(r["published"])
+        if r["published"]
+        else datetime.min,
+        reverse=True,
+    )
+    return list(rows_sorted)[:max_results]
+
 
 # ===================== Ekstraksi Artikel: Trafilatura + Fallback =====================
 def fetch_article(url: str, user_agent: Optional[str] = None) -> Dict:
@@ -676,7 +840,9 @@ def fetch_articles(urls: List[str], user_agent: Optional[str] = None, max_worker
 # ===================== Sidebar =====================
 with st.sidebar:
     st.header("⚙️ Pengaturan")
-    keyword = st.text_input("Kata kunci", "inflasi Indonesia")
+    # BARU:
+    raw_keywords = st.text_input("Kata kunci (pisahkan dengan koma)", "inflasi, suku bunga")
+    keywords = [k.strip() for k in re.split(r"[,;]", raw_keywords) if k.strip()]
     max_results = st.slider("Jumlah berita (maks)", 10, 200, 60, 10)
 
     # rentang tanggal (WIB). default: 14 hari ke belakang s/d hari ini
@@ -708,8 +874,9 @@ if run_btn:
 
     # 1) Search lokal RSS
     with st.status("🔎 Mengumpulkan RSS media lokal...", expanded=False) as status:
-        rows = search_indonesia_rss(
-            keyword.strip(),
+        # BARU:
+        rows = search_multi_source(
+            keywords,  # list instead of string
             max_results=max_results,
             date_start=start_date,
             date_end=end_date,
