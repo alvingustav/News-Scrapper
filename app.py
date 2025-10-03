@@ -709,21 +709,31 @@ def search_multi_source(
 
     # --- 2) Fallback Google News RSS jika <10 ---
     if len(rows) < 10:
-        google_results = search_google_news_rss(keywords, max_results // 2)
-        rows.extend(google_results)
-        st.caption(f"📰 + Google News RSS: {len(google_results)} artikel")
-
-    # --- 3) Tambah NewsAPI — selalu dijalankan bila masih kurang ---
+        try:
+            google_results = search_google_news_rss(keywords, max_results // 2)
+            rows.extend(google_results)
+            st.caption(f"📰 + Google News RSS: {len(google_results)} artikel")
+        except Exception as e:
+            st.caption(f"📰 + Google News RSS: Error - {str(e)}")
+    
+    # --- 3) NewsAPI ---
     if len(rows) < max_results:
-        newsapi_results = search_newsapi(keywords, max_results // 3)
-        rows.extend(newsapi_results)
-        st.caption(f"🌐 + NewsAPI: {len(newsapi_results)} artikel")
-
-    # --- 4) Tambah Berita Indo API ---
+        try:
+            newsapi_results = search_newsapi(keywords, max_results // 3)
+            rows.extend(newsapi_results)
+            st.caption(f"🌐 + NewsAPI: {len(newsapi_results)} artikel")
+        except Exception as e:
+            st.caption(f"🌐 + NewsAPI: Error - {str(e)}")
+    
+    # --- 4) Berita Indo API ---
     if len(rows) < max_results:
-        berita_indo_results = search_berita_indo_api(keywords, max_results // 4)
-        rows.extend(berita_indo_results)
-        st.caption(f"📡 + Berita Indo API: {len(berita_indo_results)} artikel")
+        try:
+            berita_indo_results = search_berita_indo_api(keywords, max_results // 4)
+            rows.extend(berita_indo_results)
+            st.caption(f"📡 + Berita Indo API: {len(berita_indo_results)} artikel")
+        except Exception as e:
+            st.caption(f"📡 + Berita Indo API: Error - {str(e)}")
+
 
     # --- deduplikasi & sort dengan handling timezone yang aman ---
     seen_urls = set()
