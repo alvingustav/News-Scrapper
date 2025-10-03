@@ -860,7 +860,7 @@ def fetch_articles(urls: List[str], user_agent: Optional[str] = None, max_worker
 with st.sidebar:
     st.header("⚙️ Pengaturan")
     # BARU:
-    raw_keywords = st.text_input("Kata kunci (pisahkan dengan koma)", "inflasi, suku bunga")
+    raw_kw = st.text_input("Kata kunci (pisahkan dengan koma)", "inflasi, suku bunga")
     keywords = [k.strip() for k in re.split(r"[;,]", raw_kw) if k.strip()]
     max_results = st.slider("Jumlah berita (maks)", 10, 200, 60, 10)
 
