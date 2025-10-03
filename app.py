@@ -577,7 +577,7 @@ def search_google_news_rss(keywords: List[str], limit: int = 50) -> List[Dict]:
             
             for entry in feed.entries[:limit//len(extra_feeds)]:
                 hits = matches_keyword_multi(entry, keywords)
-                if hits:
+                if hits and is_in_date_range_str(getattr(entry, "published", None), date_start, date_end):
                     out.append({
                         "title": entry.title,
                         "url": entry.link,
@@ -676,6 +676,28 @@ def search_berita_indo_api(keywords: List[str], limit: int = 50) -> List[Dict]:
         except Exception:
             continue
     return out[:limit]
+
+def is_in_date_range_str(date_str: Optional[str], start_date, end_date) -> bool:
+    """Cek apakah date_str (bisa ISO / RSS) berada di [start_date, end_date] (inklusif).
+       Jika tidak bisa di-parse, kembalikan False saat filter aktif."""
+    if not (start_date or end_date):
+        return True
+    if not date_str:
+        return False
+    try:
+        dt = dtparser.parse(date_str)
+        # normalisasi ke WIB lalu jadikan date() naive
+        if dt.tzinfo:
+            dt = dt.astimezone(ZoneInfo("Asia/Jakarta")).replace(tzinfo=None)
+        d = dt.date()
+        if start_date and d < start_date:
+            return False
+        if end_date and d > end_date:
+            return False
+        return True
+    except Exception:
+        return False
+
 
 def matches_keyword_multi(entry, keywords: List[str]) -> List[str]:
     """
