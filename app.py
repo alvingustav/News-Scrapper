@@ -526,26 +526,44 @@ NEWSAPI_KEY = "60448de50608492983ffdf1a9f4379cf"
 
 # ====== Fallback Search ======
 def search_google_news_rss(keywords: List[str], limit: int = 50) -> List[Dict]:
-    out = []
-    for kw in keywords:
-        url = (
-            "https://news.google.com/rss/search?"
-            + urllib.parse.urlencode(
-                {"q": f"{kw} Indonesia", "hl": "id", "gl": "ID", "ceid": "ID:id"}
-            )
-        )
-        for e in feedparser.parse(url).entries[:limit]:
-            out.append(
-                {
-                    "title": e.title,
-                    "url": e.link,
-                    "source": "Google News",
-                    "published": getattr(e, "published", None),
-                    "desc": getattr(e, "summary", None),
-                    "hit_keywords": kw,
-                }
-            )
-    return out
+    """TIDAK pakai Google News RSS, tapi RSS langsung dari portal"""
+    out = []  # ✅ Konsisten dengan kode sebelumnya
+    
+    # RSS alternatif untuk coverage internasional
+    alt_feeds = [
+        "https://rss.cnn.com/rss/edition.rss",
+        "https://feeds.bbci.co.uk/news/rss.xml", 
+        "https://rss.reuters.com/news/rss/topNews",
+        "https://feeds.npr.org/1001/rss.xml"
+    ]
+    
+    for feed_url in alt_feeds:
+        try:
+            feed = feedparser.parse(feed_url)
+            for entry in feed.entries[:limit//len(alt_feeds)]:
+                title = (entry.title or "").lower()
+                summary = (getattr(entry, 'summary', '') or "").lower()
+                
+                # Cek keyword match
+                matched_kw = [kw for kw in keywords if kw.lower() in title or kw.lower() in summary]
+                if matched_kw:
+                    out.append({
+                        "title": entry.title,
+                        "url": entry.link,  # URL langsung, bukan redirect
+                        "source": f"International ({feed_url.split('//')[-1].split('/')[0]})",
+                        "published": getattr(entry, "published", None),
+                        "desc": getattr(entry, "summary", ""),
+                        "hit_keywords": ", ".join(matched_kw),
+                    })
+                if len(out) >= limit:
+                    break
+        except Exception:
+            continue
+        if len(out) >= limit:
+            break
+            
+    return out[:limit]  # ✅ Return out, bukan results
+
 
 def search_newsapi(keywords: List[str], limit: int = 50) -> List[Dict]:
     if not NEWSAPI_KEY:
