@@ -644,15 +644,24 @@ def search_multi_source(
         except Exception:
             return src, None
 
-    rows: list[dict] = []
+    def safe_parse_date(date_str):
+        """Parse tanggal dengan aman, hilangkan timezone untuk sorting"""
+        try:
+            if not date_str:
+                return datetime.min
+            dt = dtparser.parse(date_str)
+            # Hilangkan timezone info untuk menghindari mixing offset-aware/naive
+            return dt.replace(tzinfo=None)
+        except Exception:
+            return datetime.min
+
+    rows: List[Dict] = []
+    
     # --- 1) RSS lokal paralel ---
     with ThreadPoolExecutor(max_workers=max_workers) as ex:
-        for src, feed in (
-            fut.result()
-            for fut in as_completed(
-                [ex.submit(_fetch, s, u) for s, u in ALL_FEEDS]
-            )
-        ):
+        futures = [ex.submit(_fetch, s, u) for s, u in ALL_FEEDS]
+        for fut in as_completed(futures):
+            src, feed = fut.result()
             if not feed:
                 continue
             for e in feed.entries:
@@ -669,39 +678,50 @@ def search_multi_source(
                     or (date_end and dt.date() > date_end)
                 ):
                     continue
-                rows.append(
-                    dict(
-                        title=e.title,
-                        url=link,
-                        source=src,
-                        published=dt.isoformat() if dt else getattr(e, "published", None),
-                        desc=getattr(e, "summary", None),
-                        hit_keywords=", ".join(hits),
-                    )
-                )
+                rows.append({
+                    "title": getattr(e, "title", ""),
+                    "url": link,
+                    "source": src,
+                    "published": dt.isoformat() if dt else getattr(e, "published", None),
+                    "desc": getattr(e, "summary", ""),
+                    "hit_keywords": ", ".join(hits),
+                })
+
+    st.caption(f"🔍 RSS lokal: {len(rows)} artikel")
 
     # --- 2) Fallback Google News RSS jika <10 ---
     if len(rows) < 10:
-        rows.extend(search_google_news_rss(keywords, max_results // 2))
+        google_results = search_google_news_rss(keywords, max_results // 2)
+        rows.extend(google_results)
+        st.caption(f"📰 + Google News RSS: {len(google_results)} artikel")
 
     # --- 3) Tambah NewsAPI — selalu dijalankan bila masih kurang ---
     if len(rows) < max_results:
-        rows.extend(search_newsapi(keywords, max_results // 3))
+        newsapi_results = search_newsapi(keywords, max_results // 3)
+        rows.extend(newsapi_results)
+        st.caption(f"🌐 + NewsAPI: {len(newsapi_results)} artikel")
 
     # --- 4) Tambah Berita Indo API ---
     if len(rows) < max_results:
-        rows.extend(search_berita_indo_api(keywords, max_results // 4))
+        berita_indo_results = search_berita_indo_api(keywords, max_results // 4)
+        rows.extend(berita_indo_results)
+        st.caption(f"📡 + Berita Indo API: {len(berita_indo_results)} artikel")
 
-    # --- deduplikasi & sort ---
-    uniq = {r["url"]: r for r in rows}.values()
-    rows_sorted = sorted(
-        uniq,
-        key=lambda r: dtparser.parse(r["published"])
-        if r["published"]
-        else datetime.min,
-        reverse=True,
-    )
-    return list(rows_sorted)[:max_results]
+    # --- deduplikasi & sort dengan handling timezone yang aman ---
+    seen_urls = set()
+    unique_rows = []
+    for row in rows:
+        if row["url"] not in seen_urls:
+            seen_urls.add(row["url"])
+            unique_rows.append(row)
+
+    # Sort dengan safe date parsing
+    unique_rows.sort(key=lambda r: safe_parse_date(r["published"]), reverse=True)
+    
+    st.caption(f"✅ Total unik setelah deduplikasi: {len(unique_rows)}")
+    
+    return unique_rows[:max_results]
+
 
 
 # ===================== Ekstraksi Artikel: Trafilatura + Fallback =====================
