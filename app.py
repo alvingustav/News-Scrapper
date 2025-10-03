@@ -887,7 +887,7 @@ with st.sidebar:
 
 # ===================== Main Flow =====================
 if run_btn:
-    if not keyword.strip():
+    if not keywords.strip():
         st.warning("Mohon isi kata kunci.")
         st.stop()
 
@@ -1019,7 +1019,7 @@ if run_btn:
         .rename(columns={"title_final": "title", "publish_final": "published"})
         .to_csv(index=False).encode("utf-8")
     )
-    safe_kw = re.sub(r"\W+", "_", keyword.strip())
+    safe_kw = re.sub(r"[^\w\-]", "", "_".join(keywords))
     st.download_button("💾 Unduh CSV", data=csv_bytes, file_name=f"sentimen_berita_lokal_{safe_kw}.csv", mime="text/csv")
 
     with st.expander("ℹ️ Catatan"):
