@@ -887,7 +887,7 @@ with st.sidebar:
 
 # ===================== Main Flow =====================
 if run_btn:
-    if not keywords.strip():
+    if not keywords():
         st.warning("Mohon isi kata kunci.")
         st.stop()
 
