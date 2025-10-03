@@ -12,6 +12,8 @@ import trafilatura
 import feedparser
 from dateutil import parser as dtparser
 
+from zoneinfo import ZoneInfo
+
 # ===================== Streamlit Config =====================
 st.set_page_config(page_title="Sentimen Berita Lokal 🇮🇩", page_icon="📰", layout="wide")
 st.title("📰 Analisis Sentimen Berita Lokal Indonesia")
@@ -414,13 +416,14 @@ def parse_entry_date(entry) -> Optional[datetime]:
             continue
         try:
             dt = dtparser.parse(c)
-            # normalisasi ke naive
+            # normalisasi ke Asia/Jakarta (WIB) lalu jadikan naive
             if dt.tzinfo:
-                dt = dt.astimezone(tz=None).replace(tzinfo=None)
+                dt = dt.astimezone(ZoneInfo("Asia/Jakarta")).replace(tzinfo=None)
             return dt
         except Exception:
             continue
     return None
+
 
 def matches_keyword(entry, keyword: str) -> bool:
     kw = keyword.strip().lower()
@@ -456,27 +459,41 @@ def is_west_java_hit(title: str, summary: str, url: str) -> bool:
 
 
 @st.cache_data(show_spinner=False)
-def search_indonesia_rss(keyword: str, max_results: int, days_filter: int) -> List[Dict]:
+def search_indonesia_rss(
+    keyword: str,
+    max_results: int,
+    date_start: Optional[datetime.date] = None,
+    date_end: Optional[datetime.date] = None,
+) -> List[Dict]:
     """
-    Agregasi semua RSS lokal → filter by keyword & umur berita → dedup & limit.
+    Agregasi semua RSS lokal → filter by keyword & rentang tanggal (Asia/Jakarta) → dedup & limit.
+    - date_start/date_end berupa tipe datetime.date (bukan datetime).
     """
     out = []
-    cutoff = None
-    if days_filter > 0:
-        cutoff = datetime.utcnow() - timedelta(days=days_filter)
 
     for source, url in ALL_FEEDS:
         try:
             feed = feedparser.parse(url)
             for e in feed.entries:
+                # keyword check
                 if not matches_keyword(e, keyword):
                     continue
+
                 link = getattr(e, "link", None) or ""
                 if not link:
                     continue
-                dt = parse_entry_date(e)
-                if cutoff and dt and dt < cutoff:
-                    continue
+
+                dt = parse_entry_date(e)  # datetime naive WIB atau None
+                # jika user set filter tanggal, hanya ambil yang punya tanggal & berada dalam range (inklusif)
+                if (date_start or date_end):
+                    if dt is None:
+                        continue  # tak bisa dibandingkan, skip
+                    d = dt.date()
+                    if date_start and d < date_start:
+                        continue
+                    if date_end and d > date_end:
+                        continue
+
                 out.append({
                     "title": getattr(e, "title", None),
                     "url": link,
@@ -492,14 +509,17 @@ def search_indonesia_rss(keyword: str, max_results: int, days_filter: int) -> Li
     for r in out:
         uniq.setdefault(r["url"], r)
     rows = list(uniq.values())
-    # Sort by published desc (if available), else keep order
+
+    # Sort by published desc (kalau ada), else min
     def _key(r):
         try:
             return dtparser.parse(r["published"])
         except Exception:
             return datetime.min
     rows.sort(key=_key, reverse=True)
+
     return rows[:max_results]
+
 
 # ===================== Ekstraksi Artikel: Trafilatura + Fallback =====================
 def fetch_article(url: str, user_agent: Optional[str] = None) -> Dict:
@@ -657,14 +677,28 @@ def fetch_articles(urls: List[str], user_agent: Optional[str] = None, max_worker
 with st.sidebar:
     st.header("⚙️ Pengaturan")
     keyword = st.text_input("Kata kunci", "inflasi Indonesia")
-    lock_jabar = st.checkbox("🔒 Kunci ke Jawa Barat", value=True,
-                         help="Hanya pertahankan berita yang judul/deskripsi/URL mengandung area Jawa Barat.")
     max_results = st.slider("Jumlah berita (maks)", 10, 200, 60, 10)
-    days_filter = st.slider("Filter umur berita (hari, 0=tanpa filter)", 0, 90, 14)
+
+    # rentang tanggal (WIB). default: 14 hari ke belakang s/d hari ini
+    today_wib = datetime.now(ZoneInfo("Asia/Jakarta")).date()
+    default_start = today_wib - timedelta(days=14)
+    date_range = st.date_input(
+        "Rentang tanggal (WIB)",
+        (default_start, today_wib),
+        help="Pilih tanggal mulai & selesai. Kosongkan salah satu jika ingin bebas di ujung."
+    )
+
+    # normalisasi output date_input → (start_date, end_date)
+    start_date = end_date = None
+    if isinstance(date_range, tuple) and len(date_range) == 2:
+        start_date, end_date = date_range
+    elif date_range:  # single date
+        start_date = date_range
+
     user_agent = st.text_input("Custom User-Agent (opsional)", value="")
+    lock_jabar = st.checkbox("🔒 Kunci ke Jawa Barat", value=False)
     run_btn = st.button("🚀 Cari & Analisis", use_container_width=True)
 
-st.markdown("---")
 
 # ===================== Main Flow =====================
 if run_btn:
@@ -674,8 +708,21 @@ if run_btn:
 
     # 1) Search lokal RSS
     with st.status("🔎 Mengumpulkan RSS media lokal...", expanded=False) as status:
-        rows = search_indonesia_rss(keyword.strip(), max_results=max_results, days_filter=days_filter)
+        rows = search_indonesia_rss(
+            keyword.strip(),
+            max_results=max_results,
+            date_start=start_date,
+            date_end=end_date,
+        )
+        # tampilkan ringkasan filter aktif
+        if start_date or end_date:
+            st.caption(
+                f"Filter tanggal aktif (WIB): "
+                f"{start_date.isoformat() if start_date else '—'} s/d "
+                f"{end_date.isoformat() if end_date else '—'}"
+            )
         status.update(label=f"Ditemukan {len(rows)} kandidat URL dari media lokal.", state="complete")
+
 
     if not rows:
         st.warning("Tidak ada URL dari RSS lokal yang cocok. Coba perluas kata kunci atau naikkan jumlah/longgarkan filter hari.")
