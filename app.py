@@ -1036,10 +1036,11 @@ if run_btn:
 
     # 4) Ringkasan
     st.subheader("Ringkasan Sentimen")
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3, c4 = st.columns(4)
     with c1: st.metric("Total artikel", len(df))
     with c2: st.metric("Positif", int((df["sentiment"] == "positif").sum()))
-    with c3: st.metric("Negatif", int((df["sentiment"] == "negatif").sum()))
+    with c3: st.metric("Netral", int((df["sentiment"] == "netral").sum()))
+    with c4: st.metric("Negatif", int((df["sentiment"] == "negatif").sum()))
     st.bar_chart(df["sentiment"].value_counts(), use_container_width=True)
 
     # 5) Tabel hasil
