@@ -15,6 +15,8 @@ import pandas as pd
 from backend.utils import is_in_date_range_str, matches_keyword_multi
 import re
 
+from rank_bm25 import BM25Okapi
+
 NEWSAPI_KEY = os.getenv("NEWSAPI_KEY", "")  # set di Streamlit Secrets / env
 
 def _safe_sort_key(date_str):
@@ -99,6 +101,21 @@ def _unwrap_gnews_link(link: str) -> str:
         return qs.get("url", link)
     except Exception:
         return link
+
+def bm25_rerank(rows: list[dict], keywords: list[str], topk: int | None = None) -> list[dict]:
+    if not rows:
+        return rows
+    df = pd.DataFrame(rows)
+    df["__txt"] = (df.get("title","") + " " + df.get("desc","")).str.lower()
+    corpus = [t.split() for t in df["__txt"].tolist()]
+    bm25 = BM25Okapi(corpus)
+    query_tokens = " ".join(keywords).lower().split()
+    scores = bm25.get_scores(query_tokens)
+    df["__bm25"] = scores
+    df = df.sort_values("__bm25", ascending=False)
+    if topk:
+        df = df.head(topk)
+    return df.drop(columns=["__txt","__bm25"], errors="ignore").to_dict(orient="records")
 
 def search_google_news_rss(
     keywords: list[str],
