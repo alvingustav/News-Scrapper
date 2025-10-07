@@ -352,6 +352,16 @@ def fetch_article(url: str, user_agent: Optional[str] = None) -> Dict:
                 time.sleep((2 ** i) * 0.5 + random.random())
         return None
 
+    if data["final_url"]:
+    # Coba AMP cache dulu (sering bypass paywall)
+    amp_cache_url = f"https://news-google-com.cdn.ampproject.org/c/s/{data['final_url'].replace('https://', '')}"
+    try:
+        r_amp = get_with_backoff(amp_cache_url)
+        if r_amp and r_amp.ok:
+            html = r_amp.text
+    except Exception:
+        pass
+
     # STEP 1 — trafilatura.fetch_url langsung di final_url
     try:
         downloaded = trafilatura.fetch_url(final_url, no_ssl=True, user_agent=UA)
@@ -380,6 +390,18 @@ def fetch_article(url: str, user_agent: Optional[str] = None) -> Dict:
             r.encoding = r.apparent_encoding or r.encoding
             html = r.text
             data["final_url"] = r.url or final_url
+            
+        # ✅ TARUH DI SINI - Cek JavaScript-heavy site
+    if html and len(html) < 5000 and 'reactroot' in html.lower():
+        data["error"] = "javascript_heavy_site"
+        return data
+    
+    # Atau cek variasi lainnya
+    if html and len(html) < 5000:
+        js_indicators = ['reactroot', '__next', 'nuxt', 'ng-version', 'data-vue-app']
+        if any(indicator in html.lower() for indicator in js_indicators):
+            data["error"] = "javascript_heavy_site"
+            return data
 
     # STEP 3 — trafilatura.extract dari HTML mentah
     if html:
@@ -497,7 +519,7 @@ def fetch_article(url: str, user_agent: Optional[str] = None) -> Dict:
 def fetch_articles(urls: List[str], user_agent: Optional[str] = None, max_workers: int = 8) -> List[Dict]:
     """Parallel fetch dengan sedikit delay agar tidak agresif."""
     def fetch_with_delay(u: str) -> Dict:
-        time.sleep(random.uniform(0.35, 1.1))  # sopan
+        time.sleep(random.uniform(1.5, 3.5))  # sopan
         return fetch_article(u, user_agent)
 
     out: List[Dict] = []
