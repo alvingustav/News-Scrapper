@@ -102,6 +102,7 @@ with st.status("📥 Mengunduh & mengekstrak isi artikel...", expanded=False) as
     arts = fetch_articles(urls, user_agent or None, max_workers=8)
     status.update(label="Ekstraksi selesai.", state="complete")
 
+
 df_art = pd.DataFrame(arts)
 for c in ["url", "title_article", "text", "publish_date", "meta_desc"]:
     if c not in df_art.columns: df_art[c] = None
@@ -126,6 +127,11 @@ if int((df["len_text"] > MIN_LEN).sum()) == 0:
     st.stop()
 
 df = df[df["len_text"] > MIN_LEN].copy()
+
+# ✅ Tambahkan ini (Point 3)
+with st.expander("🔧 Debug ekstraksi (contoh 10)"):
+    cols_debug = [c for c in ["source", "title_final", "url", "final_url", "len_text"] if c in df.columns]
+    st.dataframe(df[cols_debug].head(10), width="stretch")
 
 # ---------- SENTIMEN ----------
 with st.status("🧠 Memuat model & menganalisis sentimen...", expanded=False) as status:
