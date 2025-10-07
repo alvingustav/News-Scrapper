@@ -352,15 +352,17 @@ def fetch_article(url: str, user_agent: Optional[str] = None) -> Dict:
                 time.sleep((2 ** i) * 0.5 + random.random())
         return None
 
+    # ✅ Optimasi AMP Cache - TARUH DI SINI (setelah helper function)
+    html = None
     if data["final_url"]:
-    # Coba AMP cache dulu (sering bypass paywall)
-    amp_cache_url = f"https://news-google-com.cdn.ampproject.org/c/s/{data['final_url'].replace('https://', '')}"
-    try:
-        r_amp = get_with_backoff(amp_cache_url)
-        if r_amp and r_amp.ok:
-            html = r_amp.text
-    except Exception:
-        pass
+        # Coba AMP cache dulu untuk bypass paywall
+        amp_cache_url = f"https://news-google-com.cdn.ampproject.org/c/s/{data['final_url'].replace('https://', '')}"
+        try:
+            r_amp = get_with_backoff(amp_cache_url)
+            if r_amp and r_amp.ok:
+                html = r_amp.text
+        except Exception:
+            pass
 
     # STEP 1 — trafilatura.fetch_url langsung di final_url
     try:
