@@ -16,8 +16,26 @@ from backend.utils import is_in_date_range_str, matches_keyword_multi
 import re
 
 from rank_bm25 import BM25Okapi
+import html as htmllib  # ← Tambahkan import ini di bagian atas
 
 NEWSAPI_KEY = os.getenv("NEWSAPI_KEY", "")  # set di Streamlit Secrets / env
+
+# Tambahkan fungsi helper setelah imports
+def clean_html_desc(text: str) -> str:
+    """Remove HTML tags dan decode HTML entities dari description"""
+    if not text:
+        return ""
+    
+    # 1. Decode HTML entities (&nbsp;, &amp;, dll)
+    text = htmllib.unescape(text)
+    
+    # 2. Remove semua HTML tags
+    text = re.sub(r'<[^>]+>', '', text)
+    
+    # 3. Remove extra whitespace
+    text = re.sub(r'\s+', ' ', text).strip()
+    
+    return text
 
 def _safe_sort_key(date_str):
     try:
@@ -65,7 +83,7 @@ def search_multi_source(
                     "url": link,
                     "source": src,
                     "published": dt.isoformat() if dt else getattr(e, "published", None),
-                    "desc": getattr(e, "summary", ""),
+                    "desc": clean_html_desc(getattr(e, "summary", "")),  # ← Tambahkan clean_html_desc
                     "hit_keywords": ", ".join(hits),
                 })
             
@@ -176,7 +194,7 @@ def search_google_news_rss(
         feed = feedparser.parse(rss_url)
         for e in feed.entries[:per_kw]:
             title = getattr(e, "title", "")
-            desc = getattr(e, "summary", "")
+            desc = clean_html_desc(getattr(e, "summary", ""))  # ← Tambahkan clean_
             link = _unwrap_gnews_link(getattr(e, "link", ""))
             pub = getattr(e, "published", None)
 
