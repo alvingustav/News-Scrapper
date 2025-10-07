@@ -76,7 +76,7 @@ def search_multi_source(
             limit=max_results,           # biar banyak, nanti dipotong & dedup
             date_start=date_start,
             date_end=date_end,
-            filter_to_indonesia=True
+            filter_to_indonesia=False
         )
         rows.extend(gnews_rows)
 
