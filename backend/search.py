@@ -33,6 +33,8 @@ def search_multi_source(
     date_start=None,
     date_end=None,
     max_workers: int = 24,
+    use_google_news: bool = True,     # <— tambahkan ini
+    use_bm25_rerank: bool = True, 
 ) -> List[Dict]:
     rows: List[Dict] = []
 
@@ -40,6 +42,33 @@ def search_multi_source(
     def _fetch(src, url):
         try: return src, feedparser.parse(url)
         except Exception: return src, None
+            
+    # 2) Google News RSS (opsional)
+    if use_google_news:
+        gnews_rows = search_google_news_rss(
+            keywords=keywords,
+            limit=max_results,           # biar banyak, nanti dipotong & dedup
+            date_start=date_start,
+            date_end=date_end,
+            filter_to_indonesia=True
+        )
+        rows.extend(gnews_rows)
+
+    # 3) dedup by URL + sort by published (kode lamamu)
+    seen = set(); uniq = []
+    for r in rows:
+        if r["url"] in seen: continue
+        seen.add(r["url"]); uniq.append(r)
+
+    uniq.sort(key=lambda r: _safe_sort_key(r.get("published")), reverse=True)
+
+    # 4) BM25 rerank terhadap title+desc (opsional)
+    if use_bm25_rerank:
+        uniq = bm25_rerank(uniq, keywords, topk=max_results)
+    else:
+        uniq = uniq[:max_results]
+
+    return uniq
 
     with ThreadPoolExecutor(max_workers=max_workers) as ex:
         futures = [ex.submit(_fetch, s, u) for s, u in ALL_FEEDS]
