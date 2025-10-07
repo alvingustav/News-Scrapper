@@ -102,23 +102,28 @@ with st.status("📥 Mengunduh & mengekstrak isi artikel...", expanded=False) as
     arts = fetch_articles(urls, user_agent or None, max_workers=8)
     status.update(label="Ekstraksi selesai.", state="complete")
 
-
+# Gabungkan hasil ekstraksi dengan seed awal
 df_art = pd.DataFrame(arts)
-for c in ["url", "title_article", "text", "publish_date", "meta_desc"]:
-    if c not in df_art.columns: df_art[c] = None
+for c in ["url", "title_article", "text", "publish_date", "meta_desc", "final_url"]:
+    if c not in df_art.columns:
+        df_art[c] = None
 
 df = df_seed.merge(df_art, on="url", how="left")
 df["title_final"] = df["title_article"].fillna(df["title"])
 df["publish_final"] = df["publish_date"].fillna(df["published"])
 
-# pastikan text string & bersih
-df["text"] = df.get("text","").fillna("").astype(str)
+# ✅ (POINT 4) Normalisasi teks — taruh DI SINI
+# Pastikan kolom text tidak kosong dan rapih
+df["text"] = df.get("text", "").fillna("").astype(str)
 df["text"] = df["text"].str.replace(r"\s+", " ", regex=True).str.strip()
 
+# Hitung panjang teks untuk analisis kelayakan
 df["len_text"] = df["text"].str.len()
-st.caption("🔎 Debug ekstraksi (panjang teks)")
-st.dataframe(df["len_text"].describe().to_frame("len_text_stats").T, use_container_width=True)
 
+st.caption("🔎 Debug ekstraksi (panjang teks)")
+st.dataframe(df["len_text"].describe().to_frame("len_text_stats").T, width="stretch")
+
+# Filter minimum panjang
 MIN_LEN = 80
 if int((df["len_text"] > MIN_LEN).sum()) == 0:
     st.warning("Semua ekstraksi gagal/terlalu pendek. Coba tambahkan feed, ganti keyword, atau isi User-Agent.")
@@ -128,10 +133,11 @@ if int((df["len_text"] > MIN_LEN).sum()) == 0:
 
 df = df[df["len_text"] > MIN_LEN].copy()
 
-# ✅ Tambahkan ini (Point 3)
+# Debug hasil akhir
 with st.expander("🔧 Debug ekstraksi (contoh 10)"):
     cols_debug = [c for c in ["source", "title_final", "url", "final_url", "len_text"] if c in df.columns]
     st.dataframe(df[cols_debug].head(10), width="stretch")
+
 
 # ---------- SENTIMEN ----------
 with st.status("🧠 Memuat model & menganalisis sentimen...", expanded=False) as status:
