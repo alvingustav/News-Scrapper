@@ -13,6 +13,9 @@ import streamlit as st
 import trafilatura
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import base64
+from urllib.parse import urlparse, parse_qs
+
 
 # =========================
 # Utilities (resolvers/meta)
@@ -66,6 +69,85 @@ def resolve_gnews(url: str, session: requests.Session, timeout: int = 20) -> Tup
     except Exception:
         pass
 
+    return final_url, first_html
+
+
+def resolve_gnews_advanced(url: str, session: requests.Session, timeout: int = 20) -> Tuple[str, Optional[str]]:
+    """
+    Resolve Google News URL dengan berbagai metode:
+    1. Decode CBMi base64 URLs
+    2. Follow redirects dengan session cookies
+    3. Extract dari JavaScript redirect
+    """
+    final_url = url
+    first_html = None
+    
+    try:
+        # Method 1: Decode base64 articles URL
+        if "/articles/CBMi" in url or "/articles/CAIi" in url:
+            # Extract base64 portion
+            match = re.search(r'/articles/(CBMi[A-Za-z0-9_-]+|CAIi[A-Za-z0-9_-]+)', url)
+            if match:
+                try:
+                    encoded = match.group(1)
+                    # Tambahkan padding jika perlu
+                    padding = len(encoded) % 4
+                    if padding:
+                        encoded += '=' * (4 - padding)
+                    
+                    decoded = base64.urlsafe_b64decode(encoded).decode('utf-8', errors='ignore')
+                    # Cari URL dalam decoded content
+                    url_match = re.search(r'https?://[^\s\x00-\x1f\"\'<>]+', decoded)
+                    if url_match:
+                        final_url = url_match.group(0)
+                        # Validate it's not Google domain
+                        if "google.com" not in final_url:
+                            return final_url, None
+                except Exception:
+                    pass
+        
+        # Method 2: Standard redirect following dengan cookies
+        session.cookies.clear()
+        r = session.get(url, timeout=timeout, allow_redirects=True)
+        
+        if r.ok and r.url:
+            final_url = r.url
+            
+            # Jika masih di Google News, extract dari HTML
+            if "news.google.com" in final_url:
+                r.encoding = r.apparent_encoding or 'utf-8'
+                first_html = r.text
+                
+                # Method 3a: Meta refresh
+                meta_match = re.search(
+                    r'<meta[^>]*http-equiv=["\']refresh["\'][^>]*content=["\'][^;]*;\s*url=([^"\']+)',
+                    first_html, re.I
+                )
+                if meta_match:
+                    redirect_url = htmllib.unescape(meta_match.group(1))
+                    if redirect_url and "google.com" not in redirect_url:
+                        final_url = redirect_url
+                        return final_url, first_html
+                
+                # Method 3b: JavaScript window.location
+                js_match = re.search(
+                    r'window\.location\s*=\s*["\']([^"\']+)["\']',
+                    first_html, re.I
+                )
+                if js_match:
+                    redirect_url = htmllib.unescape(js_match.group(1))
+                    if redirect_url and "google.com" not in redirect_url:
+                        final_url = redirect_url
+                        return final_url, first_html
+                
+                # Method 3c: First external link
+                ext = _first_external_href(first_html)
+                if ext:
+                    final_url = ext
+                    
+    except Exception as e:
+        pass
+    
     return final_url, first_html
 
 
@@ -161,11 +243,19 @@ def fetch_article(url: str, user_agent: Optional[str] = None) -> Dict:
     # STEP 0 — resolve Google News → publisher
     final_url = url
     first_html: Optional[str] = None
+    
     try:
         if "news.google.com" in url:
-            final_url, first_html = resolve_gnews(url, session)
+            final_url, first_html = resolve_gnews_advanced(url, session)  # ← Gunakan fungsi baru
+            
+            # Jika masih gagal resolve, log tapi tetap lanjut
+            if "news.google.com" in final_url:
+                data["error"] = "gnews_unresolved_but_continuing"
+                # JANGAN return dulu - lanjut ke metode ekstraksi lain
+                
     except Exception as e:
         data["error"] = f"resolve_gnews: {e}"
+    
     data["final_url"] = final_url
 
     # Helper: simple backoff for 429/503
