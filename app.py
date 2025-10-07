@@ -69,6 +69,8 @@ with st.status("🔎 Mengumpulkan RSS media lokal...", expanded=False) as status
         max_results=max_results,
         date_start=start_date,
         date_end=end_date,
+        use_google_news=use_gnews,
+        use_bm25_rerank=use_bm25,
     )
     st.caption(f"Filter tanggal aktif (WIB): {start_date} s/d {end_date}")
     status.update(label=f"Ditemukan {len(rows)} kandidat URL.", state="complete")
