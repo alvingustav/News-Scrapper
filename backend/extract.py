@@ -250,10 +250,9 @@ def fetch_article(url: str, user_agent: Optional[str] = None) -> Dict:
             final_url, first_html = resolve_gnews_advanced(url, session)  # ← Gunakan fungsi baru
 
 
-            # Jika masih gagal resolve, log tapi tetap lanjut
-            if "news.google.com" in final_url:
+            if "news.google.com" in data["final_url"]:
+                st.warning(f"⚠️ Gagal resolve Google News: {url[:60]}...")
                 data["error"] = "gnews_unresolved_but_continuing"
-                # JANGAN return dulu - lanjut ke metode ekstraksi lain
                 
     except Exception as e:
         data["error"] = f"resolve_gnews: {e}"
