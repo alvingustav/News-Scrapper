@@ -16,6 +16,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import base64
 from urllib.parse import urlparse, parse_qs
 
+import json
+from urllib.parse import quote, urlparse
+from bs4 import BeautifulSoup
+
 
 # =========================
 # Utilities (resolvers/meta)
@@ -33,43 +37,115 @@ def _first_external_href(html_text: str) -> Optional[str]:
     return None
 
 
-def resolve_gnews(url: str, session: requests.Session, timeout: int = 20) -> Tuple[str, Optional[str]]:
+def get_decoding_params(gn_art_id: str, session: requests.Session) -> Dict:
     """
-    Resolve link Google News (termasuk /rss/articles/CBMi...) menjadi publisher URL.
-    Returns (final_url, first_html) — first_html bisa dipakai ulang agar hemat request.
+    Ambil parameter decoding (signature, timestamp) dari Google News article.
+    Fallback: coba /articles dulu, kalau gagal coba /rss/articles
     """
-    final_url = url
-    first_html = None
+    urls_to_try = [
+        f"https://news.google.com/articles/{gn_art_id}",
+        f"https://news.google.com/rss/articles/{gn_art_id}"
+    ]
+    
+    for url in urls_to_try:
+        try:
+            response = session.get(url, timeout=10)
+            if not response.ok:
+                continue
+                
+            soup = BeautifulSoup(response.text, "html.parser")
+            div = soup.select_one("c-wiz > div")
+            
+            if div:
+                signature = div.get("data-n-a-sg")
+                timestamp = div.get("data-n-a-ts")
+                
+                if signature and timestamp:
+                    return {
+                        "signature": signature,
+                        "timestamp": timestamp,
+                        "gn_art_id": gn_art_id,
+                    }
+        except Exception:
+            continue
+    
+    raise ValueError(f"Cannot get decoding params for {gn_art_id}")
+
+
+def decode_google_news_batch(articles: List[Dict], session: requests.Session) -> List[str]:
+    """
+    Decode multiple Google News URLs menggunakan batchexecute API.
+    Articles format: [{"signature": "...", "timestamp": "...", "gn_art_id": "..."}]
+    Returns: List of decoded URLs
+    """
+    articles_reqs = [
+        [
+            "Fbv4je",
+            f'["garturlreq",[[\"X\",\"X\",[\"X\",\"X\"],null,null,1,1,\"US:en\",null,1,null,null,null,null,null,0,1],\"X\",\"X\",1,[1,1,1],1,1,null,0,0,null,0],"{art["gn_art_id"]}",{art["timestamp"]},"{art["signature"]}"]',
+        ]
+        for art in articles
+    ]
+    
+    payload = f"f.req={quote(json.dumps([articles_reqs]))}"
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+        "Referer": "https://news.google.com/"
+    }
+    
     try:
-        # 1) HEAD follow_redirects (cepat & murah bandwidth)
-        r_head = session.head(url, timeout=timeout, allow_redirects=True)
-        if r_head.url:
-            final_url = r_head.url
+        response = session.post(
+            url="https://news.google.com/_/DotsSplashUi/data/batchexecute",
+            headers=headers,
+            data=payload,
+            timeout=20
+        )
+        response.raise_for_status()
+        
+        # Parse response
+        parts = response.text.split("\n\n")
+        if len(parts) < 2:
+            raise ValueError("Invalid batchexecute response")
+        
+        decoded = json.loads(parts[1])
+        return [json.loads(res[2])[1] for res in decoded[:-2]]
+        
+    except Exception as e:
+        raise ValueError(f"Batch decode failed: {e}")
 
-        # 2) Kalau masih di news.google.com, GET untuk cari meta refresh / href eksternal
-        if "news.google.com" in urllib.parse.urlparse(final_url).netloc:
-            r = session.get(url, timeout=timeout, allow_redirects=True)
-            if r.ok:
-                r.encoding = r.apparent_encoding or r.encoding
-                first_html = r.text
 
-                # meta refresh
-                m = re.search(
-                    r'http-equiv=["\']refresh["\'][^>]*content=["\'][^;]+;\s*url=([^"\']+)',
-                    first_html, re.I
-                )
-                if m:
-                    cand = htmllib.unescape(m.group(1))
-                    if cand and "news.google.com" not in cand and "google.com" not in cand:
-                        final_url = cand
-                else:
-                    ext = _first_external_href(first_html)
-                    if ext:
-                        final_url = ext
-    except Exception:
-        pass
-
-    return final_url, first_html
+def resolve_gnews_new(url: str, session: requests.Session) -> str:
+    """
+    Resolve Google News URL menggunakan metode batchexecute (2024-2025).
+    Metode ini diperlukan untuk URL format /articles/ atau /rss/articles/
+    """
+    try:
+        parsed = urlparse(url)
+        path_parts = parsed.path.split("/")
+        
+        # Extract article ID dari URL
+        gn_art_id = None
+        if "articles" in path_parts:
+            idx = path_parts.index("articles")
+            if idx + 1 < len(path_parts):
+                gn_art_id = path_parts[idx + 1]
+        
+        if not gn_art_id:
+            return url
+        
+        # Get decoding params
+        params = get_decoding_params(gn_art_id, session)
+        
+        # Decode URL
+        decoded_urls = decode_google_news_batch([params], session)
+        
+        if decoded_urls and len(decoded_urls) > 0:
+            return decoded_urls[0]
+        
+        return url
+        
+    except Exception as e:
+        st.warning(f"⚠️ Google News decode error: {str(e)[:100]}")
+        return url
 
 
 def resolve_gnews_advanced(url: str, session: requests.Session, timeout: int = 20) -> Tuple[str, Optional[str]]:
@@ -241,21 +317,25 @@ def fetch_article(url: str, user_agent: Optional[str] = None) -> Dict:
     session = requests.Session()
     session.headers.update(headers)
 
-    # STEP 0 — resolve Google News → publisher
+    # STEP 0 — resolve Google News → publisher (METODE BARU)
     final_url = url
     first_html: Optional[str] = None
     
     try:
         if "news.google.com" in url:
-            final_url, first_html = resolve_gnews_advanced(url, session)  # ← Gunakan fungsi baru
-
-
-            if "news.google.com" in data["final_url"]:
-                st.warning(f"⚠️ Gagal resolve Google News: {url[:60]}...")
-                data["error"] = "gnews_unresolved_but_continuing"
+            # Gunakan metode baru batchexecute
+            final_url = resolve_gnews_new(url, session)
+            
+            # Cek apakah berhasil
+            if "news.google.com" in final_url:
+                data["error"] = "gnews_unresolved"
+                st.warning(f"⚠️ Gagal resolve Google News: {url[:80]}...")
+            else:
+                st.success(f"✅ Resolved: {final_url[:80]}...")
                 
     except Exception as e:
         data["error"] = f"resolve_gnews: {e}"
+        st.error(f"❌ Error resolving: {str(e)[:100]}")
     
     data["final_url"] = final_url
 
