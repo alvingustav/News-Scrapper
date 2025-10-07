@@ -110,15 +110,23 @@ def _gnews_rss_url(query: str, lang="id", country="ID"):
     return f"https://news.google.com/rss/search?q={urllib.parse.quote(query)}&hl={lang}&gl={country}&ceid={country}:{lang}"
 
 def _unwrap_gnews_link(link: str) -> str:
-    # sebagian sudah direct ke publisher. tapi kalau berupa redirect news.google.com/url?url=...
+    """
+    - url?url=... → pulangkan nilai url
+    - articles/... → biarkan apa adanya (akan di-resolve via requests di extractor)
+    - yang lain → pulangkan apa adanya
+    """
     try:
-        if "news.google.com" not in link:
+        if not link or "news.google.com" not in link:
             return link
         parsed = urllib.parse.urlparse(link)
         qs = dict(urllib.parse.parse_qsl(parsed.query))
-        return qs.get("url", link)
+        if "url" in qs and qs["url"]:
+            return qs["url"]
+        # jika pattern /articles/ biarkan; extractor akan follow redirects
+        return link
     except Exception:
         return link
+
 
 def bm25_rerank(rows: list[dict], keywords: list[str], topk: int | None = None) -> list[dict]:
     if not rows:
