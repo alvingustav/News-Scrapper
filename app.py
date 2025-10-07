@@ -24,7 +24,7 @@ with st.form("search_form", clear_on_submit=False):
     with col1:
         raw_kw = st.text_input("Kata kunci (pisahkan dengan koma)", "inflasi, suku bunga, BI rate")
     with col2:
-        max_results = st.slider("Jumlah berita (maks)", 10, 200, 60, 10)
+        max_results = st.slider("Jumlah berita (maks)", 10, 1000, 60, 10)
 
     col3, col4, col5 = st.columns([1.5, 1.5, 1])
     today_wib = datetime.now(ZoneInfo("Asia/Jakarta")).date()
