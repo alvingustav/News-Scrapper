@@ -150,10 +150,6 @@ def resolve_gnews_advanced(url: str, session: requests.Session, timeout: int = 2
     
     return final_url, first_html
 
-# Di awal fetch_article, setelah resolve Google News
-if "news.google.com" in data["final_url"]:
-    st.warning(f"⚠️ Gagal resolve: {url[:60]}... → masih di Google News")
-
 
 
 def _apply_meta_from_html(dest: Dict, html_text: str) -> None:
@@ -252,7 +248,10 @@ def fetch_article(url: str, user_agent: Optional[str] = None) -> Dict:
     try:
         if "news.google.com" in url:
             final_url, first_html = resolve_gnews_advanced(url, session)  # ← Gunakan fungsi baru
-            
+
+            # Di awal fetch_article, setelah resolve Google News
+            if "news.google.com" in data["final_url"]:
+            st.warning(f"⚠️ Gagal resolve: {url[:60]}... → masih di Google News")
             # Jika masih gagal resolve, log tapi tetap lanjut
             if "news.google.com" in final_url:
                 data["error"] = "gnews_unresolved_but_continuing"
