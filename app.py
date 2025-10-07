@@ -35,6 +35,15 @@ with st.form("search_form", clear_on_submit=False):
         end_date = st.date_input("Tanggal selesai (WIB)", value=today_wib)
     with col5:
         lock_jabar = st.checkbox("🔒 Khusus Jabar", value=False)
+    # app.py – di dalam st.form("search_form")
+    col6, col7 = st.columns([1, 1])
+    with col6:
+        use_gnews = st.checkbox("➕ Tambahkan Google News", value=True,
+                                help="Ambil juga hasil dari Google News RSS (disaring ke media Indonesia).")
+    with col7:
+        use_bm25 = st.checkbox("🎯 Rerank BM25", value=True,
+                               help="Urutkan hasil paling relevan sebelum ekstraksi.")
+
 
     user_agent = st.text_input("Custom User-Agent (opsional)", value="")
     submitted = st.form_submit_button("🚀 Cari & Analisis", use_container_width=True)
