@@ -12,12 +12,25 @@ readability-lxml>=0.8.1
 boilerpy3>=1.0.6
 justext>=3.0.0
 beautifulsoup4>=4.12
+lxml>=4.9.3
+html5lib>=1.1
 
 # --- NLP / Sentiment Analysis ---
 transformers>=4.43
 torch>=2.2
 sentencepiece>=0.1.99
 tqdm>=4.66
+scikit-learn>=1.4
+protobuf>=5.27
+regex>=2024.4.28
+unidecode>=1.3.8
 
+# --- Ranking & Relevansi ---
 rank-bm25>=0.2.2
 
+# --- Optional: Caching & HTTP optimization ---
+aiohttp>=3.9
+httpx>=0.27
+
+# --- Text Processing & Stoplist (untuk jusText bahasa Indonesia) ---
+nltk>=3.8.1
