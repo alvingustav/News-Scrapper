@@ -249,9 +249,7 @@ def fetch_article(url: str, user_agent: Optional[str] = None) -> Dict:
         if "news.google.com" in url:
             final_url, first_html = resolve_gnews_advanced(url, session)  # ← Gunakan fungsi baru
 
-            # Di awal fetch_article, setelah resolve Google News
-            if "news.google.com" in data["final_url"]:
-            st.warning(f"⚠️ Gagal resolve: {url[:60]}... → masih di Google News")
+
             # Jika masih gagal resolve, log tapi tetap lanjut
             if "news.google.com" in final_url:
                 data["error"] = "gnews_unresolved_but_continuing"
