@@ -111,19 +111,36 @@ def _gnews_rss_url(query: str, lang="id", country="ID"):
 
 def _unwrap_gnews_link(link: str) -> str:
     """
-    - url?url=... → pulangkan nilai url
-    - articles/... → biarkan apa adanya (akan di-resolve via requests di extractor)
-    - yang lain → pulangkan apa adanya
+    Unwrap Google News link dengan berbagai format:
+    - ?url=... parameter
+    - /articles/CBMi... base64 encoded (dibiarkan untuk resolver)
+    - Direct links
     """
     try:
         if not link or "news.google.com" not in link:
             return link
+        
         parsed = urllib.parse.urlparse(link)
+        
+        # Case 1: URL parameter exists
         qs = dict(urllib.parse.parse_qsl(parsed.query))
         if "url" in qs and qs["url"]:
-            return qs["url"]
-        # jika pattern /articles/ biarkan; extractor akan follow redirects
+            unwrapped = qs["url"]
+            # Pastikan bukan Google domain
+            if "google.com" not in unwrapped:
+                return unwrapped
+        
+        # Case 2: /articles/ path - biarkan untuk di-resolve di extractor
+        # Jangan decode di sini, biar extract.py yang handle
+        if "/articles/" in link:
+            return link
+        
+        # Case 3: /rss/articles/ - sama seperti di atas
+        if "/rss/articles/" in link:
+            return link
+            
         return link
+        
     except Exception:
         return link
 
