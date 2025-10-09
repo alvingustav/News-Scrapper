@@ -152,10 +152,39 @@ df["confidence"] = scores
 st.subheader("Ringkasan Sentimen")
 c1, c2, c3, c4 = st.columns(4)
 with c1: st.metric("Total artikel", len(df))
-with c4: st.metric("Negatif", int((df["sentiment"] == "negatif").sum()))
+with c2: st.metric("Negatif", int((df["sentiment"] == "negatif").sum()))
 with c3: st.metric("Netral", int((df["sentiment"] == "netral").sum()))
-with c2: st.metric("Positif", int((df["sentiment"] == "positif").sum()))
-st.bar_chart(df["sentiment"].value_counts(), use_container_width=True)
+with c4: st.metric("Positif", int((df["sentiment"] == "positif").sum()))
+import altair as alt
+import pandas as pd
+
+# Hitung jumlah per label
+sent_counts = df["sentiment"].value_counts().reset_index()
+sent_counts.columns = ["sentiment", "count"]
+
+# Warna sesuai label
+color_scale = alt.Scale(
+    domain=["Negatif", "Netral", "Positif"],
+    range=["#E74C3C", "#F1C40F", "#2ECC71"]  # merah, kuning, hijau
+)
+
+# Buat chart dengan Altair
+chart = (
+    alt.Chart(sent_counts)
+    .mark_bar()
+    .encode(
+        x=alt.X("sentiment:N", title="Kategori Sentimen"),
+        y=alt.Y("count:Q", title="Jumlah Artikel"),
+        color=alt.Color("sentiment:N", scale=color_scale, legend=None),
+        tooltip=["sentiment", "count"]
+    )
+    .properties(
+        title="Distribusi Sentimen Berita",
+        width="container"
+    )
+)
+
+st.altair_chart(chart, use_container_width=True)
 
 # ---------- TABEL & UNDUH ----------
 show_cols = ["title_final", "source", "publish_final", "sentiment", "confidence", "url", "desc"]
