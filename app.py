@@ -158,33 +158,47 @@ with c4: st.metric("Positif", int((df["sentiment"] == "positif").sum()))
 import altair as alt
 import pandas as pd
 
-# Hitung jumlah per label
-sent_counts = df["sentiment"].value_counts().reset_index()
-sent_counts.columns = ["sentiment", "count"]
+# Pastikan ada kolom 'sentiment' dan tidak kosong
+if "sentiment" in df.columns and not df["sentiment"].empty:
+    # Normalisasi label agar konsisten (lowercase)
+    df["_sent"] = df["sentiment"].str.lower().map({
+        "negatif": "Negatif",
+        "netral": "Netral",
+        "positif": "Positif"
+    }).fillna("Netral")  # default kalau ada nilai di luar mapping
 
-# Warna sesuai label
-color_scale = alt.Scale(
-    domain=["Negatif", "Netral", "Positif"],
-    range=["#E74C3C", "#F1C40F", "#2ECC71"]  # merah, kuning, hijau
-)
-
-# Buat chart dengan Altair
-chart = (
-    alt.Chart(sent_counts)
-    .mark_bar()
-    .encode(
-        x=alt.X("sentiment:N", title="Kategori Sentimen"),
-        y=alt.Y("count:Q", title="Jumlah Artikel"),
-        color=alt.Color("sentiment:N", scale=color_scale, legend=None),
-        tooltip=["sentiment", "count"]
+    # Hitung jumlah per label dgn urutan yang diinginkan
+    order = ["Negatif", "Netral", "Positif"]
+    sent_counts = (
+        df["_sent"]
+        .value_counts()
+        .reindex(order, fill_value=0)
+        .reset_index()
     )
-    .properties(
-        title="Distribusi Sentimen Berita",
-        width="container"
-    )
-)
+    sent_counts.columns = ["sentiment", "count"]
 
-st.altair_chart(chart, use_container_width=True)
+    # Skala warna merah–kuning–hijau
+    color_scale = alt.Scale(
+        domain=order,
+        range=["#E74C3C", "#F1C40F", "#2ECC71"]
+    )
+
+    chart = (
+        alt.Chart(sent_counts)
+        .mark_bar()
+        .encode(
+            x=alt.X("sentiment:N", title="Kategori Sentimen", sort=order),
+            y=alt.Y("count:Q", title="Jumlah Artikel"),
+            color=alt.Color("sentiment:N", scale=color_scale, legend=None),
+            tooltip=["sentiment", "count"]
+        )
+        .properties(title="Distribusi Sentimen Berita", width="container")
+    )
+
+    st.altair_chart(chart, use_container_width=True)
+else:
+    st.info("Tidak ada data sentimen untuk ditampilkan.")
+
 
 # ---------- TABEL & UNDUH ----------
 show_cols = ["title_final", "source", "publish_final", "sentiment", "confidence", "url", "desc"]
